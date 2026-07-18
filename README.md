@@ -52,18 +52,21 @@ src/
 ## 실행
 
 ```bash
-npm install
-cp .env.example .env
-npm run web
+npm ci
+EXPO_PUBLIC_API_BASE_URL=http://localhost:8080 npm run web
 ```
 
-`.env`에서 hearO Backend 주소를 지정합니다.
+팀원은 실행 환경 또는 CI/CD에서 hearO Backend 주소를 직접 주입합니다.
 
-```env
-EXPO_PUBLIC_API_BASE_URL=http://localhost:8080
+```bash
+EXPO_PUBLIC_API_BASE_URL=https://api.example.com \
+  npx expo export --platform web
 ```
 
-모바일 기기에서 실행할 때는 `localhost` 대신 Backend가 실행 중인 컴퓨터의 LAN IP를 사용합니다.
+빌드 결과는 `dist/`에 생성됩니다. `EXPO_PUBLIC_` 값은 클라이언트 번들에 포함되므로
+API 주소처럼 공개 가능한 값만 사용하고 비밀번호나 비밀키는 넣지 않습니다.
+
+모바일 기기에서 로컬 실행할 때는 `localhost` 대신 Backend가 실행 중인 컴퓨터의 LAN IP를 사용합니다.
 
 ## 확인
 
