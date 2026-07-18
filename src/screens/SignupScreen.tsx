@@ -1,5 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { teamApi } from '../api/teamApi';
@@ -22,15 +22,61 @@ export function SignupScreen({ navigation }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [checkNumber, setCheckNumber] = useState('');
   const [userType, setUserType] = useState<UserType>('WARD');
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(0);
   const [created, setCreated] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const normalizedEmail = email.trim().toLowerCase();
+  const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
+
+  useEffect(() => {
+    if (!emailSent || emailVerified || secondsLeft <= 0) return;
+    const timer = setInterval(() => {
+      setSecondsLeft((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [emailSent, emailVerified, secondsLeft]);
+
+  function changeEmail(value: string) {
+    setEmail(value);
+    setEmailSent(false);
+    setEmailVerified(false);
+    setCheckNumber('');
+    setSecondsLeft(0);
+    setMessage(null);
+  }
+
+  async function sendCode() {
+    const result = await action.run(() => teamApi.sendEmailCode(normalizedEmail));
+    if (result !== undefined) {
+      setEmailSent(true);
+      setEmailVerified(false);
+      setSecondsLeft(180);
+      setMessage('인증번호를 발송했습니다. 메일함과 스팸함을 확인하세요.');
+    }
+  }
+
+  async function verifyCode() {
+    const result = await action.run(() =>
+      teamApi.checkEmailCode(normalizedEmail, checkNumber.trim()),
+    );
+    if (result !== undefined) {
+      setEmailVerified(true);
+      setSecondsLeft(0);
+      setMessage('이메일 인증이 완료되었습니다.');
+    }
+  }
 
   async function signup() {
+    if (!emailVerified) return;
     const result = await action.run(() =>
       teamApi.join({
         id: id.trim(),
         name: name.trim(),
-        email: email.trim(),
+        email: normalizedEmail,
         password,
         userType,
       }),
@@ -41,8 +87,11 @@ export function SignupScreen({ navigation }: Props) {
   return (
     <Screen>
       <Text style={uiStyles.pageTitle}>회원가입</Text>
-      <Text style={uiStyles.subtitle}>서비스에서 사용할 역할과 기본 정보를 입력하세요.</Text>
-      <Section title="역할 선택">
+      <Text style={uiStyles.subtitle}>
+        계정 정보를 입력하고 이메일 인증을 완료하세요.
+      </Text>
+
+      <Section title="1. 역할 선택">
         <View style={uiStyles.row}>
           {roles.map((role) => (
             <View key={role.value} style={uiStyles.flex}>
@@ -58,16 +107,46 @@ export function SignupScreen({ navigation }: Props) {
           {roles.find((role) => role.value === userType)?.description}
         </Text>
       </Section>
-      <Section title="계정 정보">
-        <Field label="아이디" value={id} onChangeText={setId} placeholder="영문·숫자 조합" />
-        <Field label="이름" value={name} onChangeText={setName} placeholder="이름 또는 기관명" />
+
+      <Section title="2. 이메일 인증" description="인증번호는 발송 후 3분 동안 유효합니다.">
         <Field
           label="이메일"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={changeEmail}
           keyboardType="email-address"
           placeholder="name@example.com"
+          editable={!emailVerified}
         />
+        <Button
+          title={emailSent ? '인증번호 다시 받기' : '인증번호 받기'}
+          tone={emailSent ? 'secondary' : 'primary'}
+          onPress={sendCode}
+          disabled={action.loading || !validEmail || emailVerified}
+        />
+        {emailSent && !emailVerified ? (
+          <>
+            <Field
+              label={`인증번호${secondsLeft > 0 ? ` · ${formatTime(secondsLeft)}` : ' · 만료됨'}`}
+              value={checkNumber}
+              onChangeText={(value) => setCheckNumber(value.replace(/\D/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              placeholder="6자리 숫자"
+              maxLength={6}
+            />
+            <Button
+              title="인증번호 확인"
+              onPress={verifyCode}
+              disabled={action.loading || checkNumber.length !== 6 || secondsLeft <= 0}
+            />
+          </>
+        ) : null}
+        {message ? <Notice>{message}</Notice> : null}
+        {emailVerified ? <Text style={uiStyles.badge}>✓ 이메일 인증 완료</Text> : null}
+      </Section>
+
+      <Section title="3. 계정 정보">
+        <Field label="아이디" value={id} onChangeText={setId} placeholder="영문·숫자 조합" />
+        <Field label="이름" value={name} onChangeText={setName} placeholder="이름 또는 기관명" />
         <Field
           label="비밀번호"
           value={password}
@@ -83,13 +162,13 @@ export function SignupScreen({ navigation }: Props) {
           </>
         ) : (
           <Button
-            title={action.loading ? '가입 중...' : '가입 완료'}
+            title={action.loading ? '처리 중...' : '가입 완료'}
             onPress={signup}
             disabled={
               action.loading ||
+              !emailVerified ||
               !id.trim() ||
               !name.trim() ||
-              !email.trim() ||
               !password
             }
           />
@@ -97,4 +176,10 @@ export function SignupScreen({ navigation }: Props) {
       </Section>
     </Screen>
   );
+}
+
+function formatTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }

@@ -20,6 +20,14 @@ async function data<T>(promise: Promise<{ data: ApiResult<T> }>) {
   return response.data.data;
 }
 
+async function checkedData<T>(promise: Promise<{ data: ApiResult<T> }>) {
+  const response = await promise;
+  if (response.data.status !== '200') {
+    throw new Error(response.data.message || '요청을 처리하지 못했습니다.');
+  }
+  return response.data.data;
+}
+
 export const teamApi = {
   health: async () => {
     const response = await apiClient.get('/api/health');
@@ -36,6 +44,17 @@ export const teamApi = {
     password: string;
     userType: UserType;
   }) => data<string>(apiClient.post('/api/users/join', input)),
+
+  sendEmailCode: (email: string) =>
+    checkedData<null>(apiClient.post('/api/mail/send', { email })),
+
+  checkEmailCode: (email: string, checkNumber: string) =>
+    checkedData<null>(
+      apiClient.post('/api/mail/check', {
+        email,
+        checkNumber,
+      }),
+    ),
 
   searchWard: (wardUserId: string, page = 0) =>
     data<WardSearchResponse>(
