@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "hearO Cowork Test",
+    "slug": "hearo-cowork-front",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hearo.cowork.test",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "진료 기능 확인을 위해 짧은 음성을 녹음합니다."
+      }
+    },
+    "android": {
+      "package": "com.hearo.cowork.test",
+      "permissions": ["RECORD_AUDIO"]
+    },
+    "plugins": ["expo-audio"]
+  }
+}
