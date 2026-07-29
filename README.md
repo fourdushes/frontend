@@ -102,6 +102,27 @@ npm run preview
 PORT=3000 npm run preview
 ```
 
+## Web CI/CD
+
+`main` 브랜치에 코드가 push되면 GitHub Actions가 타입 검사와 Expo Web
+빌드를 수행하고, Nginx 기반 멀티 아키텍처 이미지를 `hearo-frontend`
+ECR 저장소에 commit SHA 태그로 push합니다. 이후
+`k8s/hearo-frontend.yaml`의 이미지 태그를 자동으로 갱신합니다.
+
+GitHub 저장소에는 다음 값을 등록해야 합니다.
+
+- Actions secret `AWS_ROLE_ARN`: GitHub OIDC IAM Role ARN
+- Actions variable `AWS_REGION`: `ap-northeast-2`
+- Actions variable `AWS_ACCOUNT_ID`: `225989329853`
+- Actions variable `FRONTEND_API_BASE_URL`: 운영 백엔드 HTTPS 주소
+
+Argo CD Application에는 자동 Sync가 설정되어 있지 않습니다. 새 이미지가
+준비되면 Argo CD에서 `hearo-frontend -> Sync -> Synchronize`를 선택해야
+실제 배포됩니다.
+
+이 파이프라인은 Expo Web 배포용입니다. iOS와 Android 스토어 빌드는 EAS
+Build/Submit 파이프라인으로 별도 관리합니다.
+
 ## 백엔드 연동
 
 프런트엔드는 백엔드의 공통 `Result<T>` 응답과 사용자 유형 `WARD`, `GUARDIAN`, `INSTITUTIONS`를 기준으로 동작합니다.

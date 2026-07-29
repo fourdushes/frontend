@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hearo-frontend
+  labels:
+    app: hearo-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hearo-frontend
+  template:
+    metadata:
+      labels:
+        app: hearo-frontend
+    spec:
+      nodeSelector:
+        workload: app
+      containers:
+        - name: hearo-frontend
+          # GitHub Actions에서 새 commit SHA 태그로 변경합니다.
+          image: 225989329853.dkr.ecr.ap-northeast-2.amazonaws.com/hearo-frontend:initial
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hearo-frontend
+  labels:
+    app: hearo-frontend
+spec:
+  type: NodePort
+  selector:
+    app: hearo-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      nodePort: 30080

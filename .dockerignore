@@ -1,0 +1,10 @@
+node_modules
+.expo
+dist
+.git
+.github
+k8s
+deploy
+.env
+.env.*
+npm-debug.log*
