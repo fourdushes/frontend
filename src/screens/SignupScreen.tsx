@@ -270,7 +270,7 @@ export function SignupScreen({ navigation, route }: Props) {
           </View>
         </View>
 
-        <View style={styles.formCard}>
+        <View style={[styles.formCard, stacked && styles.formCardStacked]}>
           {created ? (
             <View style={styles.successState}>
               <View style={styles.successIcon}><Text style={styles.successIconText}>✓</Text></View>
@@ -282,32 +282,86 @@ export function SignupScreen({ navigation, route }: Props) {
             </View>
           ) : (
             <>
-              <View style={styles.formSection}>
-                <Text style={styles.formSectionNumber}>STEP 1</Text>
-                <Text style={styles.formSectionTitle}>
-                  {group === 'INSTITUTION' ? '기관 정보를 입력해 주세요.' : '사용자 역할을 선택해 주세요.'}
-                </Text>
+              <View style={[styles.formCardIntro, stacked && styles.formCardIntroStacked]}>
+                <View style={styles.formCardIntroCopy}>
+                  <Text style={styles.formCardEyebrow}>ACCOUNT SETUP</Text>
+                  <Text style={styles.formCardTitle}>가입 정보를 입력해 주세요.</Text>
+                  <Text style={styles.formCardDescription}>
+                    필요한 정보만 간단히 확인하면 바로 HearO를 시작할 수 있습니다.
+                  </Text>
+                </View>
+                <View style={styles.durationBadge}>
+                  <Text style={styles.durationBadgeText}>약 3분</Text>
+                </View>
+              </View>
+
+              <View style={[styles.formSection, styles.formSectionCard]}>
+                <SignupSectionHeader
+                  step="01"
+                  title={group === 'INSTITUTION' ? '기관 정보' : '사용자 역할'}
+                  description={
+                    group === 'INSTITUTION'
+                      ? '서비스에서 사용할 기관명을 입력해 주세요.'
+                      : 'HearO에서 이용할 역할 하나를 선택해 주세요.'
+                  }
+                />
                 {group === 'USER' ? (
                   <>
-                    <View style={styles.roleGrid}>
+                    <View style={[styles.roleGrid, stacked && styles.roleGridStacked]}>
                       <Pressable
                         onPress={() => setUserType('WARD')}
-                        style={[styles.roleCard, userType === 'WARD' && styles.roleCardActive]}
+                        style={[
+                          styles.roleCard,
+                          stacked && styles.roleCardStacked,
+                          userType === 'WARD' && styles.roleCardActive,
+                        ]}
                       >
+                        <View style={styles.roleCardTop}>
+                          <View style={[styles.roleIcon, userType === 'WARD' && styles.roleIconActive]}>
+                            <Text style={[styles.roleIconText, userType === 'WARD' && styles.roleIconTextActive]}>＋</Text>
+                          </View>
+                          <View style={[styles.roleCheck, userType === 'WARD' && styles.roleCheckActive]}>
+                            <Text style={styles.roleCheckText}>{userType === 'WARD' ? '✓' : ''}</Text>
+                          </View>
+                        </View>
                         <Text style={[styles.roleTitle, userType === 'WARD' && styles.roleTitleActive]}>피보호자 사용자</Text>
                         <Text style={styles.roleText}>진료를 요청하고 내 기록을 확인합니다.</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => setUserType('GUARDIAN')}
-                        style={[styles.roleCard, userType === 'GUARDIAN' && styles.roleCardActive]}
+                        style={[
+                          styles.roleCard,
+                          stacked && styles.roleCardStacked,
+                          userType === 'GUARDIAN' && styles.roleCardActive,
+                        ]}
                       >
+                        <View style={styles.roleCardTop}>
+                          <View style={[styles.roleIcon, userType === 'GUARDIAN' && styles.roleIconActive]}>
+                            <Text style={[styles.roleIconText, userType === 'GUARDIAN' && styles.roleIconTextActive]}>♡</Text>
+                          </View>
+                          <View style={[styles.roleCheck, userType === 'GUARDIAN' && styles.roleCheckActive]}>
+                            <Text style={styles.roleCheckText}>{userType === 'GUARDIAN' ? '✓' : ''}</Text>
+                          </View>
+                        </View>
                         <Text style={[styles.roleTitle, userType === 'GUARDIAN' && styles.roleTitleActive]}>보호자 사용자</Text>
                         <Text style={styles.roleText}>연결된 가족의 진료 기록을 확인합니다.</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => setUserType('INSTITUTIONS')}
-                        style={[styles.roleCard, userType === 'INSTITUTIONS' && styles.roleCardActive]}
+                        style={[
+                          styles.roleCard,
+                          stacked && styles.roleCardStacked,
+                          userType === 'INSTITUTIONS' && styles.roleCardActive,
+                        ]}
                       >
+                        <View style={styles.roleCardTop}>
+                          <View style={[styles.roleIcon, userType === 'INSTITUTIONS' && styles.roleIconActive]}>
+                            <Text style={[styles.roleIconText, userType === 'INSTITUTIONS' && styles.roleIconTextActive]}>H</Text>
+                          </View>
+                          <View style={[styles.roleCheck, userType === 'INSTITUTIONS' && styles.roleCheckActive]}>
+                            <Text style={styles.roleCheckText}>{userType === 'INSTITUTIONS' ? '✓' : ''}</Text>
+                          </View>
+                        </View>
                         <Text style={[styles.roleTitle, userType === 'INSTITUTIONS' && styles.roleTitleActive]}>기관 사용자</Text>
                         <Text style={styles.roleText}>소속 기관을 선택하고 진료 업무를 담당합니다.</Text>
                       </Pressable>
@@ -391,29 +445,35 @@ export function SignupScreen({ navigation, route }: Props) {
               </View>
 
               {group === 'USER' ? (
-                <>
-                  <View style={styles.formDivider} />
-
-                  <View style={styles.formSection}>
-                    <Text style={styles.formSectionNumber}>STEP 2</Text>
-                    <Text style={styles.formSectionTitle}>이메일을 인증해 주세요.</Text>
-                    <Field
-                      label="이메일"
-                      value={email}
-                      onChangeText={changeEmail}
-                      editable={!emailVerified}
-                      keyboardType="email-address"
-                      placeholder="name@example.com"
-                      error={email.length > 3 && !validEmail ? '올바른 이메일 형식을 입력해 주세요.' : undefined}
+                <View style={[styles.formSection, styles.formSectionCard]}>
+                    <SignupSectionHeader
+                      step="02"
+                      title="이메일 인증"
+                      description="계정 보호를 위해 실제 사용하는 이메일을 확인합니다."
                     />
-                    <Button
-                      title={emailSent ? '인증번호 다시 받기' : '인증번호 받기'}
-                      tone={emailSent ? 'secondary' : 'primary'}
-                      onPress={sendCode}
-                      disabled={loading || !validEmail || emailVerified}
-                    />
+                    <View style={[styles.emailRow, stacked && styles.emailRowStacked]}>
+                      <View style={styles.emailField}>
+                        <Field
+                          label="이메일"
+                          value={email}
+                          onChangeText={changeEmail}
+                          editable={!emailVerified}
+                          keyboardType="email-address"
+                          placeholder="name@example.com"
+                          error={email.length > 3 && !validEmail ? '올바른 이메일 형식을 입력해 주세요.' : undefined}
+                        />
+                      </View>
+                      <View style={[styles.emailAction, stacked && styles.emailActionStacked]}>
+                        <Button
+                          title={emailSent ? '다시 받기' : '인증번호 받기'}
+                          tone={emailSent ? 'secondary' : 'primary'}
+                          onPress={sendCode}
+                          disabled={loading || !validEmail || emailVerified}
+                        />
+                      </View>
+                    </View>
                     {emailSent && !emailVerified ? (
-                      <View style={styles.codeRow}>
+                      <View style={[styles.codeRow, stacked && styles.codeRowStacked]}>
                         <View style={styles.codeField}>
                           <Field
                             label="인증번호"
@@ -425,7 +485,7 @@ export function SignupScreen({ navigation, route }: Props) {
                             hint={secondsLeft > 0 ? formatTime(secondsLeft) : '인증번호 만료'}
                           />
                         </View>
-                        <View style={styles.codeButton}>
+                        <View style={[styles.codeButton, stacked && styles.codeButtonStacked]}>
                           <Button
                             title="번호 확인"
                             onPress={verifyCode}
@@ -435,18 +495,20 @@ export function SignupScreen({ navigation, route }: Props) {
                       </View>
                     ) : null}
                     {message ? <Notice tone={emailVerified ? 'success' : 'info'}>{message}</Notice> : null}
-                  </View>
-                </>
+                </View>
               ) : null}
 
-              <View style={styles.formDivider} />
-
-              <View style={styles.formSection}>
-                <Text style={styles.formSectionNumber}>STEP {group === 'INSTITUTION' ? '2' : '3'}</Text>
-                <Text style={styles.formSectionTitle}>
-                  {group === 'INSTITUTION' ? '기관 로그인 정보를 입력해 주세요.' : '계정 정보를 입력해 주세요.'}
-                </Text>
-                <View style={styles.twoColumns}>
+              <View style={[styles.formSection, styles.formSectionCard]}>
+                <SignupSectionHeader
+                  step={group === 'INSTITUTION' ? '02' : '03'}
+                  title="계정 정보"
+                  description={
+                    group === 'INSTITUTION'
+                      ? '기관 로그인에 사용할 아이디와 비밀번호를 설정해 주세요.'
+                      : '로그인에 사용할 기본 정보를 설정해 주세요.'
+                  }
+                />
+                <View style={[styles.twoColumns, stacked && styles.twoColumnsStacked]}>
                   <View style={styles.column}>
                     <Field
                       label={group === 'INSTITUTION' ? '기관 로그인 아이디' : '아이디'}
@@ -467,7 +529,7 @@ export function SignupScreen({ navigation, route }: Props) {
                     </View>
                   ) : null}
                 </View>
-                <View style={styles.twoColumns}>
+                <View style={[styles.twoColumns, stacked && styles.twoColumnsStacked]}>
                   <View style={styles.column}>
                     <Field
                       label="비밀번호"
@@ -489,24 +551,49 @@ export function SignupScreen({ navigation, route }: Props) {
                   </View>
                 </View>
                 {error ? <Notice tone="error" title="가입을 완료하지 못했습니다.">{error}</Notice> : null}
-                <Button
-                  title={loading ? '가입 정보를 확인하고 있습니다…' : group === 'INSTITUTION' ? '기관 회원가입' : '사용자 회원가입'}
-                  onPress={submit}
-                  disabled={
-                    loading ||
-                    (group === 'USER' && !emailVerified) ||
-                    id.trim().length < 5 ||
-                    !name.trim() ||
-                    !passwordMatches ||
-                    (group === 'USER' && userType === 'INSTITUTIONS' && !selectedInstitution)
-                  }
-                />
+                <View style={styles.submitPanel}>
+                  <Text style={styles.submitHint}>입력한 정보를 확인한 뒤 가입을 완료해 주세요.</Text>
+                  <Button
+                    title={loading ? '가입 정보를 확인하고 있습니다…' : group === 'INSTITUTION' ? '기관 계정 만들기' : '사용자 계정 만들기'}
+                    onPress={submit}
+                    disabled={
+                      loading ||
+                      (group === 'USER' && !emailVerified) ||
+                      id.trim().length < 5 ||
+                      !name.trim() ||
+                      !passwordMatches ||
+                      (group === 'USER' && userType === 'INSTITUTIONS' && !selectedInstitution)
+                    }
+                  />
+                </View>
               </View>
             </>
           )}
         </View>
       </View>
     </Screen>
+  );
+}
+
+function SignupSectionHeader({
+  step,
+  title,
+  description,
+}: {
+  step: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <View style={styles.formSectionHeader}>
+      <View style={styles.formSectionStep}>
+        <Text style={styles.formSectionStepText}>{step}</Text>
+      </View>
+      <View style={styles.formSectionHeaderCopy}>
+        <Text style={styles.formSectionTitle}>{title}</Text>
+        <Text style={styles.formSectionDescription}>{description}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -570,18 +657,41 @@ const styles = StyleSheet.create({
   stepNumber: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.38)', alignItems: 'center', justifyContent: 'center' },
   stepNumberText: { color: '#fff', fontFamily, fontSize: 10, fontWeight: '900' },
   stepLabel: { color: '#fff', fontFamily, fontSize: 11, fontWeight: '800' },
-  formCard: { flex: 1, padding: 38, gap: 28 },
-  formSection: { gap: 14 },
-  formSectionNumber: { color: colors.primary, fontFamily, fontSize: 8, fontWeight: '900', letterSpacing: 1.3 },
-  formSectionTitle: { color: colors.text, fontFamily, fontSize: 18, fontWeight: '900', marginBottom: 3 },
-  formDivider: { height: 1, backgroundColor: colors.border, marginVertical: 4 },
+  formCard: { flex: 1, padding: 34, gap: 18, backgroundColor: colors.surface },
+  formCardStacked: { padding: 22 },
+  formCardIntro: { minHeight: 88, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 18, paddingHorizontal: 2 },
+  formCardIntroStacked: { flexDirection: 'column', minHeight: 0 },
+  formCardIntroCopy: { flex: 1, minWidth: 0 },
+  formCardEyebrow: { color: colors.primary, fontFamily, fontSize: 8, fontWeight: '900', letterSpacing: 1.4 },
+  formCardTitle: { color: colors.text, fontFamily, fontSize: 24, fontWeight: '900', letterSpacing: -0.7, marginTop: 7 },
+  formCardDescription: { color: colors.muted, fontFamily, fontSize: 10, lineHeight: 17, marginTop: 6 },
+  durationBadge: { minHeight: 32, borderRadius: radius.pill, backgroundColor: colors.primarySoft, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
+  durationBadgeText: { color: colors.primary, fontFamily, fontSize: 9, fontWeight: '900' },
+  formSection: { gap: 16 },
+  formSectionCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.canvas, padding: 20 },
+  formSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 2 },
+  formSectionStep: { width: 34, height: 34, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  formSectionStepText: { color: '#fff', fontFamily, fontSize: 9, fontWeight: '900', letterSpacing: 0.6 },
+  formSectionHeaderCopy: { flex: 1, minWidth: 0 },
+  formSectionTitle: { color: colors.text, fontFamily, fontSize: 15, fontWeight: '900' },
+  formSectionDescription: { color: colors.muted, fontFamily, fontSize: 9, lineHeight: 15, marginTop: 3 },
   roleGrid: { flexDirection: 'row', gap: 10 },
-  roleCard: { flex: 1, minHeight: 86, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 15, justifyContent: 'center' },
+  roleGridStacked: { flexDirection: 'column' },
+  roleCard: { flex: 1, minHeight: 132, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, padding: 14 },
+  roleCardStacked: { width: '100%', flexGrow: 0, flexShrink: 0, flexBasis: 'auto' },
   roleCardActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
-  roleTitle: { color: colors.text, fontFamily, fontSize: 12, fontWeight: '900' },
+  roleCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 },
+  roleIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: colors.surfaceSoft, alignItems: 'center', justifyContent: 'center' },
+  roleIconActive: { backgroundColor: colors.primary },
+  roleIconText: { color: colors.primary, fontFamily, fontSize: 14, fontWeight: '900' },
+  roleIconTextActive: { color: '#fff' },
+  roleCheck: { width: 20, height: 20, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  roleCheckActive: { borderColor: colors.primary, backgroundColor: colors.primary },
+  roleCheckText: { color: '#fff', fontFamily, fontSize: 9, fontWeight: '900' },
+  roleTitle: { color: colors.text, fontFamily, fontSize: 11, fontWeight: '900' },
   roleTitleActive: { color: colors.primary },
-  roleText: { color: colors.muted, fontFamily, fontSize: 9, lineHeight: 15, marginTop: 4 },
-  institutionSearch: { gap: 10 },
+  roleText: { color: colors.muted, fontFamily, fontSize: 8, lineHeight: 14, marginTop: 5 },
+  institutionSearch: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16, gap: 10 },
   searchDropdown: { borderWidth: 1, borderColor: colors.primaryBorder, borderRadius: radius.md, backgroundColor: colors.surface, overflow: 'hidden' },
   searchDropdownHeader: { minHeight: 42, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.canvas, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   searchDropdownTitle: { color: colors.text, fontFamily, fontSize: 10, fontWeight: '900' },
@@ -596,11 +706,21 @@ const styles = StyleSheet.create({
   searchResultMarkText: { color: colors.primary, fontFamily, fontSize: 11, fontWeight: '900' },
   searchResultName: { flex: 1, color: colors.text, fontFamily, fontSize: 11, fontWeight: '800' },
   searchResultAction: { color: colors.primary, fontFamily, fontSize: 9, fontWeight: '900' },
+  emailRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
+  emailRowStacked: { flexDirection: 'column', alignItems: 'stretch' },
+  emailField: { flex: 1, minWidth: 0 },
+  emailAction: { width: 142 },
+  emailActionStacked: { width: '100%' },
   codeRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
+  codeRowStacked: { flexDirection: 'column', alignItems: 'stretch' },
   codeField: { flex: 1 },
   codeButton: { width: 118 },
-  twoColumns: { flexDirection: 'row', gap: 10 },
-  column: { flex: 1 },
+  codeButtonStacked: { width: '100%' },
+  twoColumns: { flexDirection: 'column', gap: 14 },
+  twoColumnsStacked: { flexDirection: 'column' },
+  column: { width: '100%' },
+  submitPanel: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 17, gap: 11 },
+  submitHint: { color: colors.muted, fontFamily, fontSize: 9, textAlign: 'center' },
   successState: { flex: 1, minHeight: 520, alignItems: 'center', justifyContent: 'center' },
   successIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.successSoft, alignItems: 'center', justifyContent: 'center' },
   successIconText: { color: colors.success, fontFamily, fontSize: 26, fontWeight: '900' },
