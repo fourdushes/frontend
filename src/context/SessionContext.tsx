@@ -1,10 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  createContext,
+  PropsWithChildren,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 
-import { setApiAccessToken } from '../api/tokenStore';
-import { LoginResponse } from '../types/api';
+import { configureApiSession } from '../api/tokenStore';
+import { LoginResponse, TokenPair } from '../types/api';
 
-const STORAGE_KEY = 'hearo.cowork.session';
+const STORAGE_KEY = 'hearo.session';
 
 type SessionContextValue = {
   session: LoginResponse | null;
@@ -23,12 +30,31 @@ export function SessionProvider({ children }: PropsWithChildren) {
     AsyncStorage.getItem(STORAGE_KEY)
       .then((value) => {
         if (!value) return;
-        const restored = JSON.parse(value) as LoginResponse;
-        setSession(restored);
-        setApiAccessToken(restored.accessToken);
+        setSession(JSON.parse(value) as LoginResponse);
       })
+      .catch(() => AsyncStorage.removeItem(STORAGE_KEY))
       .finally(() => setReady(true));
   }, []);
+
+  useEffect(() => {
+    configureApiSession(
+      session
+        ? { accessToken: session.accessToken, refreshToken: session.refreshToken }
+        : null,
+      (tokens: TokenPair) => {
+        setSession((current) => {
+          if (!current) return current;
+          const next = { ...current, ...tokens };
+          void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+          return next;
+        });
+      },
+      () => {
+        setSession(null);
+        void AsyncStorage.removeItem(STORAGE_KEY);
+      },
+    );
+  }, [session?.accessToken, session?.refreshToken]);
 
   const value = useMemo<SessionContextValue>(
     () => ({
@@ -36,12 +62,10 @@ export function SessionProvider({ children }: PropsWithChildren) {
       ready,
       signIn: async (next) => {
         setSession(next);
-        setApiAccessToken(next.accessToken);
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       },
       signOut: async () => {
         setSession(null);
-        setApiAccessToken(null);
         await AsyncStorage.removeItem(STORAGE_KEY);
       },
     }),

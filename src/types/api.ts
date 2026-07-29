@@ -13,6 +13,26 @@ export type LoginResponse = {
   userType: UserType;
 };
 
+export type TokenPair = Pick<LoginResponse, 'accessToken' | 'refreshToken'>;
+
+export type InstitutionSearchItem = {
+  institutionId: number;
+  institutionName: string;
+};
+
+export type InstitutionSearchPage = {
+  content: InstitutionSearchItem[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+};
+
+export type PasswordChangePreparation = {
+  id: string;
+  userType: UserType;
+  tempToken: string;
+};
+
 export type WardSearchItem = {
   wardUserId: string;
   wardUserName: string;
@@ -26,10 +46,13 @@ export type WardSearchResponse = {
   wardUserList: WardSearchItem[];
 };
 
+export type CareState = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export type CareListItem = {
+  careId: number;
   wardUserId: string;
   guardUserId: string;
-  careState: string;
+  careState: CareState;
   createdAt: string;
   updatedAt: string;
 };
@@ -39,14 +62,44 @@ export type CareListResponse = {
   careList: CareListItem[];
 };
 
-export type SaveCareResponse = {
-  careId: number;
-};
-
 export type ChangeCareStateResponse = {
   careId: number;
-  careState: string;
+  careState: CareState;
 };
+
+export type ConnectedWard = {
+  careId: number;
+  wardUserId: string;
+  wardUserName: string;
+  userType: 'WARD';
+  mainGuardUser: boolean;
+};
+
+export type ConnectedGuardian = {
+  careId: number;
+  guardUserId: string;
+  guardUserName: string;
+  userType: 'GUARDIAN';
+  mainGuardUser: boolean;
+};
+
+export type ConnectedWardsResponse = {
+  totalCount: number;
+  wardSearchList: ConnectedWard[];
+};
+
+export type ConnectedGuardiansResponse = {
+  totalCount: number;
+  guardSearchList: ConnectedGuardian[];
+};
+
+export type MedicalRequestStatus =
+  | 'REQUESTED'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'CANCELED';
 
 export type MedicalRequest = {
   medicalRequestId: number;
@@ -54,11 +107,11 @@ export type MedicalRequest = {
   wardUserName: string;
   institutionUserId: string;
   institutionUserName: string;
-  status: string;
+  status: MedicalRequestStatus;
   createdAt: string;
-  respondedAt?: string | null;
-  startedAt?: string | null;
-  completedAt?: string | null;
+  respondedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
 };
 
 export type Institution = {
@@ -70,14 +123,27 @@ export type Institution = {
 export type ChatMessage = {
   messageId: number;
   chatRoomId: number;
-  senderType: string;
+  senderType: 'INSTITUTION_USER' | 'WARD_USER' | 'SYSTEM';
   senderId: string;
   senderName: string;
-  messageType: string;
+  messageType: 'TEXT' | 'VOICE_TRANSCRIPT' | 'SYSTEM';
   content: string;
-  recordId?: number | null;
+  recordId: number | null;
   createdAt: string;
   mine: boolean;
+};
+
+export type ChatRoom = {
+  chatRoomId: number;
+  medicalRequestId: number;
+  archiveId: number;
+  institutionUser: Institution;
+  wardUser: { wardUserId: string; name: string };
+  status: 'IN_PROGRESS' | 'COMPLETED';
+  startedAt: string;
+  completedAt: string | null;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
 };
 
 export type StartTreatment = {
@@ -85,10 +151,20 @@ export type StartTreatment = {
   archiveId: number;
 };
 
+export type AiResponse = {
+  wardUserId: string;
+  archiveId: number;
+  allChatText: string;
+  mainSymptoms: string;
+  doctorOpinion: string;
+  remember: string;
+  questionAnswer: string;
+  difficultWords: string;
+};
+
 export type ArchiveListItem = {
   archiveId: number;
-  archiveName?: string;
-  arhciveName?: string;
+  archiveName: string;
   archiveDate: string;
 };
 
@@ -106,16 +182,40 @@ export type ArchiveDetail = {
   archiveDate: string;
   text: string;
   allChatText: string;
+  mainSymptoms?: string;
+  doctorOpinion?: string;
+  remember?: string;
+  questionAnswer?: string;
+  difficultWords?: string;
 };
 
-export type DiagnosticEntry = {
-  id: string;
-  method: string;
-  path: string;
-  status?: number;
-  durationMs: number;
-  requestId: string;
-  at: string;
-  ok: boolean;
-  message?: string;
+export type MyPage = {
+  userId: string;
+  username: string;
+  email: string;
+  userType: UserType;
+  institytionsName?: string;
+};
+
+export type InquiryStatus = 'PENDING' | 'ANSWERED';
+
+export type Inquiry = {
+  inquiryId: number;
+  userId: string;
+  userName: string;
+  userType: UserType;
+  title: string;
+  content: string;
+  status: InquiryStatus;
+  answer: string | null;
+  createdAt: string;
+  answeredAt: string | null;
+};
+
+export type InquiryList = {
+  totalElements: number;
+  page: number;
+  size: number;
+  hasNext: boolean;
+  inquiries: Inquiry[];
 };

@@ -1,6 +1,6 @@
 {
-  "name": "hearo-cowork-front",
-  "version": "0.1.0",
+  "name": "hearo-frontend",
+  "version": "1.0.0",
   "private": true,
   "main": "index.js",
   "scripts": {
@@ -8,7 +8,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "expo export --platform web",
+    "preview": "node scripts/serve-web.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
