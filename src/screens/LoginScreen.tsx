@@ -1,5 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import { readableError } from '../api/client';
+import { institutionApi } from '../api/institutionApi';
 import { teamApi } from '../api/teamApi';
 import { Button, Field, Notice, Screen } from '../components/Ui';
 import { useSession } from '../context/SessionContext';
@@ -23,21 +24,26 @@ export function LoginScreen({ navigation, route }: Props) {
   const { width } = useWindowDimensions();
   const stacked = width < 860;
   const mobile = width < 640;
-  const [kind, setKind] = useState<LoginKind>('USER');
+  const [kind, setKind] = useState<LoginKind>(route.params?.kind ?? 'USER');
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (route.params?.kind) setKind(route.params.kind);
+  }, [route.params?.kind]);
+
   async function submit() {
     if (!id.trim() || !password || loading) return;
-    if (kind === 'INSTITUTION') {
-      setError('현재 백엔드에 기관 전용 로그인 API가 제공되지 않습니다.');
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
+      if (kind === 'INSTITUTION') {
+        await institutionApi.login(id.trim(), password);
+        navigation.reset({ index: 0, routes: [{ name: 'InstitutionAdmin' }] });
+        return;
+      }
       const result = await teamApi.login(id.trim(), password);
       await signIn(result);
       const destination = route.params?.redirectTo ?? 'Home';
@@ -160,7 +166,7 @@ export function LoginScreen({ navigation, route }: Props) {
           </View>
 
           <View style={styles.utilityRow}>
-            <Pressable onPress={() => navigation.navigate('AccountRecovery')}>
+            <Pressable onPress={() => navigation.navigate(kind === 'INSTITUTION' ? 'InstitutionAccountRecovery' : 'AccountRecovery')}>
               <Text style={styles.utilityLink}>아이디 · 비밀번호 찾기</Text>
             </Pressable>
             <View style={styles.utilityDivider} />
