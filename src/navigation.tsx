@@ -13,6 +13,8 @@ import { HomeScreen } from './screens/HomeScreen';
 import { InquiryDetailScreen } from './screens/InquiryDetailScreen';
 import { InquiryScreen } from './screens/InquiryScreen';
 import { InstitutionSearchScreen } from './screens/InstitutionSearchScreen';
+import { InstitutionAdminScreen } from './screens/InstitutionAdminScreen';
+import { InstitutionAccountRecoveryScreen } from './screens/InstitutionAccountRecoveryScreen';
 import { LoginScreen } from './screens/LoginScreen';
 import { MainPreviewScreen } from './screens/MainPreviewScreen';
 import { RequestListScreen } from './screens/RequestListScreen';
@@ -25,12 +27,15 @@ export type SignupGroup = 'USER' | 'INSTITUTION';
 export type RootStackParamList = {
   MainPreview: undefined;
   Login: {
+    kind?: 'USER' | 'INSTITUTION';
     redirectTo?: keyof RootStackParamList;
     redirectParams?: Record<string, unknown>;
   } | undefined;
   Signup: { group?: SignupGroup } | undefined;
   AccountRecovery: undefined;
+  InstitutionAccountRecovery: undefined;
   Home: undefined;
+  InstitutionAdmin: undefined;
   InstitutionSearch: undefined;
   RequestList: undefined;
   Care: undefined;
@@ -78,6 +83,7 @@ function guestScreen(Component: ComponentType<any>) {
 const GuestLogin = guestScreen(LoginScreen);
 const GuestSignup = guestScreen(SignupScreen);
 const GuestRecovery = guestScreen(AccountRecoveryScreen);
+const GuestInstitutionRecovery = guestScreen(InstitutionAccountRecoveryScreen);
 const GuestMainPreview = guestScreen(MainPreviewScreen);
 const ProtectedHome = protectedScreen(HomeScreen);
 const ProtectedInstitutionSearch = protectedScreen(InstitutionSearchScreen);
@@ -98,7 +104,9 @@ const linking: LinkingOptions<RootStackParamList> = {
       Login: 'login',
       Signup: 'signup',
       AccountRecovery: 'account-recovery',
+      InstitutionAccountRecovery: 'institution-account-recovery',
       Home: 'home',
+      InstitutionAdmin: 'institution-admin',
       InstitutionSearch: 'institutions',
       RequestList: 'requests',
       Care: 'care',
@@ -131,7 +139,9 @@ export function RootNavigation() {
         <Stack.Screen name="Login" component={GuestLogin} />
         <Stack.Screen name="Signup" component={GuestSignup} />
         <Stack.Screen name="AccountRecovery" component={GuestRecovery} />
+        <Stack.Screen name="InstitutionAccountRecovery" component={GuestInstitutionRecovery} />
         <Stack.Screen name="Home" component={ProtectedHome} />
+        <Stack.Screen name="InstitutionAdmin" component={InstitutionAdminScreen} />
         <Stack.Screen name="InstitutionSearch" component={ProtectedInstitutionSearch} />
         <Stack.Screen name="RequestList" component={ProtectedRequestList} />
         <Stack.Screen name="Care" component={ProtectedCare} />
