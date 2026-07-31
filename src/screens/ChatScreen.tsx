@@ -1,7 +1,6 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -38,17 +37,6 @@ import { AiResponse, ChatMessage, ChatRoom } from '../types/api';
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 type RecordingStatus = 'IDLE' | 'RECORDING' | 'READY' | 'UPLOADING' | 'CONVERTING';
 
-const CLOVA_SUPPORTED_WEB_MIME_TYPES = [
-  'audio/mp4;codecs=mp4a.40.2',
-  'audio/mp4',
-];
-
-function getSupportedWebRecordingMimeType() {
-  if (typeof MediaRecorder === 'undefined') return null;
-  return CLOVA_SUPPORTED_WEB_MIME_TYPES.find((mimeType) =>
-    MediaRecorder.isTypeSupported(mimeType)) ?? null;
-}
-
 export function ChatScreen({ navigation, route }: Props) {
   const { session } = useSession();
   const { width } = useWindowDimensions();
@@ -65,17 +53,7 @@ export function ChatScreen({ navigation, route }: Props) {
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('IDLE');
   const refreshing = useRef(false);
-  const webRecordingMimeType = useMemo(getSupportedWebRecordingMimeType, []);
-  const recordingOptions = useMemo(() => ({
-    ...RecordingPresets.HIGH_QUALITY,
-    web: webRecordingMimeType
-      ? {
-        mimeType: webRecordingMimeType,
-        bitsPerSecond: RecordingPresets.HIGH_QUALITY.web?.bitsPerSecond,
-      }
-      : RecordingPresets.HIGH_QUALITY.web,
-  }), [webRecordingMimeType]);
-  const recorder = useAudioRecorder(recordingOptions);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 250);
   const chatRoomId = route.params.chatRoomId;
   const isWard = session?.userType === 'WARD';
@@ -155,9 +133,6 @@ export function ChatScreen({ navigation, route }: Props) {
     setError(null);
     setRecordingUri(null);
     try {
-      if (Platform.OS === 'web' && !webRecordingMimeType) {
-        throw new Error('이 브라우저는 음성 변환에서 지원하는 MP4 녹음 형식을 제공하지 않습니다. Safari 최신 버전을 이용해 주세요.');
-      }
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
         setError('음성 답변을 녹음하려면 브라우저 또는 기기에서 마이크 권한을 허용해 주세요.');
@@ -196,10 +171,7 @@ export function ChatScreen({ navigation, route }: Props) {
       if (recordingUri.startsWith('blob:')) {
         const response = await fetch(recordingUri);
         const blob = await response.blob();
-        if (!blob.type.toLowerCase().includes('mp4')) {
-          throw new Error(`지원하지 않는 웹 녹음 형식입니다: ${blob.type || '알 수 없음'}`);
-        }
-        formData.append('file', blob, `hearo-${Date.now()}.m4a`);
+        formData.append('file', blob, `hearo-${Date.now()}.webm`);
       } else {
         formData.append('file', {
           uri: recordingUri,
