@@ -39,8 +39,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 type RecordingStatus = 'IDLE' | 'RECORDING' | 'READY' | 'UPLOADING' | 'CONVERTING';
 
 const CLOVA_SUPPORTED_WEB_MIME_TYPES = [
-  'audio/mp4;codecs=mp4a.40.2',
   'audio/mp4',
+  'audio/mp4;codecs=mp4a.40.2',
 ];
 
 function getSupportedWebRecordingMimeType() {
@@ -64,18 +64,15 @@ export function ChatScreen({ navigation, route }: Props) {
   const [summary, setSummary] = useState<AiResponse | null>(null);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('IDLE');
+  const [webRecordingDurationMillis, setWebRecordingDurationMillis] = useState(0);
   const refreshing = useRef(false);
+  const webMediaRecorder = useRef<MediaRecorder | null>(null);
+  const webMediaStream = useRef<MediaStream | null>(null);
+  const webRecordingChunks = useRef<Blob[]>([]);
+  const webRecordingStartedAt = useRef<number | null>(null);
+  const webDurationTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const webRecordingMimeType = useMemo(getSupportedWebRecordingMimeType, []);
-  const recordingOptions = useMemo(() => ({
-    ...RecordingPresets.HIGH_QUALITY,
-    web: webRecordingMimeType
-      ? {
-        mimeType: webRecordingMimeType,
-        bitsPerSecond: RecordingPresets.HIGH_QUALITY.web?.bitsPerSecond,
-      }
-      : RecordingPresets.HIGH_QUALITY.web,
-  }), [webRecordingMimeType]);
-  const recorder = useAudioRecorder(recordingOptions);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 250);
   const chatRoomId = route.params.chatRoomId;
   const isWard = session?.userType === 'WARD';
@@ -107,6 +104,10 @@ export function ChatScreen({ navigation, route }: Props) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => () => {
+    stopWebRecordingResources();
+  }, []);
 
   useEffect(() => {
     if (!autoRefresh || completed) return;
@@ -155,9 +156,36 @@ export function ChatScreen({ navigation, route }: Props) {
     setError(null);
     setRecordingUri(null);
     try {
-      if (Platform.OS === 'web' && !webRecordingMimeType) {
-        throw new Error('이 브라우저는 음성 변환에서 지원하는 MP4 녹음 형식을 제공하지 않습니다. Safari 최신 버전을 이용해 주세요.');
+      if (Platform.OS === 'web') {
+        if (!webRecordingMimeType || !navigator.mediaDevices?.getUserMedia) {
+          throw new Error('이 브라우저는 음성 변환에서 지원하는 MP4 녹음 형식을 제공하지 않습니다. Safari 최신 버전을 이용해 주세요.');
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream, {
+          mimeType: webRecordingMimeType,
+          audioBitsPerSecond: 128000,
+        });
+
+        webMediaStream.current = stream;
+        webMediaRecorder.current = mediaRecorder;
+        webRecordingChunks.current = [];
+        webRecordingStartedAt.current = Date.now();
+        setWebRecordingDurationMillis(0);
+
+        mediaRecorder.addEventListener('dataavailable', (event) => {
+          if (event.data.size > 0) webRecordingChunks.current.push(event.data);
+        });
+        mediaRecorder.start();
+        webDurationTimer.current = setInterval(() => {
+          if (webRecordingStartedAt.current !== null) {
+            setWebRecordingDurationMillis(Date.now() - webRecordingStartedAt.current);
+          }
+        }, 250);
+        setRecordingStatus('RECORDING');
+        return;
       }
+
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
         setError('음성 답변을 녹음하려면 브라우저 또는 기기에서 마이크 권한을 허용해 주세요.');
@@ -176,12 +204,36 @@ export function ChatScreen({ navigation, route }: Props) {
   async function stopRecording() {
     if (recordingStatus !== 'RECORDING') return;
     try {
+      if (Platform.OS === 'web') {
+        const mediaRecorder = webMediaRecorder.current;
+        if (!mediaRecorder) throw new Error('진행 중인 웹 녹음을 찾지 못했습니다.');
+
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          mediaRecorder.addEventListener('stop', () => {
+            resolve(new Blob(webRecordingChunks.current, {
+              type: mediaRecorder.mimeType || webRecordingMimeType || 'audio/mp4',
+            }));
+          }, { once: true });
+          mediaRecorder.addEventListener('error', () => {
+            reject(new Error('브라우저에서 녹음 파일을 만들지 못했습니다.'));
+          }, { once: true });
+          mediaRecorder.stop();
+        });
+
+        stopWebRecordingResources();
+        if (blob.size === 0) throw new Error('녹음 파일이 비어 있습니다.');
+        setRecordingUri(URL.createObjectURL(blob));
+        setRecordingStatus('READY');
+        return;
+      }
+
       await recorder.stop();
       await setAudioModeAsync({ allowsRecording: false });
       if (!recorder.uri) throw new Error('녹음 파일을 만들지 못했습니다.');
       setRecordingUri(recorder.uri);
       setRecordingStatus('READY');
     } catch (caught) {
+      stopWebRecordingResources();
       setError(recordingError(caught));
       setRecordingStatus('IDLE');
     }
@@ -210,6 +262,7 @@ export function ChatScreen({ navigation, route }: Props) {
       setRecordingStatus('CONVERTING');
       const message = await teamApi.uploadRecording(chatRoomId, formData);
       setMessages((current) => [...current, message]);
+      if (recordingUri.startsWith('blob:')) URL.revokeObjectURL(recordingUri);
       setRecordingUri(null);
       setRecordingStatus('IDLE');
     } catch (caught) {
@@ -219,8 +272,20 @@ export function ChatScreen({ navigation, route }: Props) {
   }
 
   function discardRecording() {
+    if (recordingUri?.startsWith('blob:')) URL.revokeObjectURL(recordingUri);
     setRecordingUri(null);
     setRecordingStatus('IDLE');
+  }
+
+  function stopWebRecordingResources() {
+    if (webDurationTimer.current !== null) {
+      clearInterval(webDurationTimer.current);
+      webDurationTimer.current = null;
+    }
+    webMediaStream.current?.getTracks().forEach((track) => track.stop());
+    webMediaStream.current = null;
+    webMediaRecorder.current = null;
+    webRecordingStartedAt.current = null;
   }
 
   if (session?.userType === 'GUARDIAN') {
@@ -362,7 +427,9 @@ export function ChatScreen({ navigation, route }: Props) {
                   <Text style={styles.recorderTitle}>{recordingLabel(recordingStatus)}</Text>
                   <Text style={styles.recorderText}>
                     {recordingStatus === 'RECORDING'
-                      ? `${formatDuration(recorderState.durationMillis)} 동안 녹음 중입니다.`
+                      ? `${formatDuration(Platform.OS === 'web'
+                        ? webRecordingDurationMillis
+                        : recorderState.durationMillis)} 동안 녹음 중입니다.`
                       : recordingStatus === 'READY'
                         ? '녹음을 서버로 보내기 전 다시 녹음할 수 있습니다.'
                         : recordingStatus === 'UPLOADING'
