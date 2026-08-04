@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import { readableError } from '../api/client';
+import { institutionAccountApi } from '../api/institutionAccountApi';
 import { teamApi } from '../api/teamApi';
 import { Button, Field, Notice, Screen, StatusBadge } from '../components/Ui';
 import { RootStackParamList, SignupGroup } from '../navigation';
@@ -105,7 +106,8 @@ export function SignupScreen({ navigation, route }: Props) {
     setLoading(true);
     setError(null);
     try {
-      await teamApi.sendEmailCode(normalizedEmail);
+      if (group === 'INSTITUTION') await institutionAccountApi.sendVerificationCode(normalizedEmail);
+      else await teamApi.sendEmailCode(normalizedEmail);
       setEmailSent(true);
       setSecondsLeft(180);
       setMessage('인증번호를 보냈습니다. 메일함과 스팸함을 확인해 주세요.');
@@ -121,7 +123,8 @@ export function SignupScreen({ navigation, route }: Props) {
     setLoading(true);
     setError(null);
     try {
-      await teamApi.checkEmailCode(normalizedEmail, code);
+      if (group === 'INSTITUTION') await institutionAccountApi.verifyVerificationCode(normalizedEmail, code);
+      else await teamApi.checkEmailCode(normalizedEmail, code);
       setEmailVerified(true);
       setSecondsLeft(0);
       setMessage('이메일 인증이 완료되었습니다.');
@@ -134,24 +137,30 @@ export function SignupScreen({ navigation, route }: Props) {
 
   async function submit() {
     if (!group || !passwordMatches || loading) return;
-    if (group === 'INSTITUTION') {
-      setError('현재 백엔드에 기관 자체 회원가입 API가 제공되지 않습니다.');
-      return;
-    }
-    if (!emailVerified || (userType === 'INSTITUTIONS' && !selectedInstitution)) return;
+    if (!emailVerified || (group === 'USER' && userType === 'INSTITUTIONS' && !selectedInstitution)) return;
     setLoading(true);
     setError(null);
     try {
-      await teamApi.join(
-        {
-          id: id.trim(),
-          name: name.trim(),
+      if (group === 'INSTITUTION') {
+        await institutionAccountApi.join({
+          institutionName: name.trim(),
           email: normalizedEmail,
+          institutionId: id.trim(),
           password,
-          userType,
-        },
-        selectedInstitution?.institutionId,
-      );
+          checkPassword: passwordConfirm,
+        });
+      } else {
+        await teamApi.join(
+          {
+            id: id.trim(),
+            name: name.trim(),
+            email: normalizedEmail,
+            password,
+            userType,
+          },
+          selectedInstitution?.institutionId,
+        );
+      }
       setCreated(true);
     } catch (caught) {
       setError(readableError(caught));
@@ -254,7 +263,8 @@ export function SignupScreen({ navigation, route }: Props) {
             {(group === 'INSTITUTION'
               ? [
                   ['1', '기관 정보'],
-                  ['2', '로그인 정보'],
+                  ['2', '이메일 인증'],
+                  ['3', '로그인 정보'],
                 ]
               : [
                   ['1', '사용자 역할'],
@@ -275,9 +285,9 @@ export function SignupScreen({ navigation, route }: Props) {
             <View style={styles.successState}>
               <View style={styles.successIcon}><Text style={styles.successIconText}>✓</Text></View>
               <Text style={styles.successTitle}>가입이 완료되었습니다.</Text>
-              <Text style={styles.successText}>새 계정으로 로그인해 HearO 서비스를 시작하세요.</Text>
+              <Text style={styles.successText}>{group === 'INSTITUTION' ? '관리자 승인 후 기관 계정으로 로그인할 수 있습니다.' : '새 계정으로 로그인해 HearO 서비스를 시작하세요.'}</Text>
               <View style={styles.successAction}>
-                <Button title="로그인으로 이동" onPress={() => navigation.navigate('Login')} />
+                <Button title="로그인으로 이동" onPress={() => navigation.navigate('Login', group === 'INSTITUTION' ? { kind: 'INSTITUTION' } : undefined)} />
               </View>
             </View>
           ) : (
@@ -444,8 +454,7 @@ export function SignupScreen({ navigation, route }: Props) {
                 )}
               </View>
 
-              {group === 'USER' ? (
-                <View style={[styles.formSection, styles.formSectionCard]}>
+              <View style={[styles.formSection, styles.formSectionCard]}>
                     <SignupSectionHeader
                       step="02"
                       title="이메일 인증"
@@ -496,11 +505,10 @@ export function SignupScreen({ navigation, route }: Props) {
                     ) : null}
                     {message ? <Notice tone={emailVerified ? 'success' : 'info'}>{message}</Notice> : null}
                 </View>
-              ) : null}
 
               <View style={[styles.formSection, styles.formSectionCard]}>
                 <SignupSectionHeader
-                  step={group === 'INSTITUTION' ? '02' : '03'}
+                  step="03"
                   title="계정 정보"
                   description={
                     group === 'INSTITUTION'
@@ -558,7 +566,7 @@ export function SignupScreen({ navigation, route }: Props) {
                     onPress={submit}
                     disabled={
                       loading ||
-                      (group === 'USER' && !emailVerified) ||
+                      !emailVerified ||
                       id.trim().length < 5 ||
                       !name.trim() ||
                       !passwordMatches ||
