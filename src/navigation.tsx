@@ -4,6 +4,7 @@ import { ComponentType, useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from './context/SessionContext';
+import { useTreatmentRequest } from './context/TreatmentRequestContext';
 import { AccountRecoveryScreen } from './screens/AccountRecoveryScreen';
 import { ArchiveDetailScreen } from './screens/ArchiveDetailScreen';
 import { ArchiveListScreen } from './screens/ArchiveListScreen';
@@ -52,6 +53,20 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 function protectedScreen(Component: ComponentType<any>) {
   return function ProtectedScreen(props: any) {
     const { session } = useSession();
+    const { activeRequest, inProgressRequest, waitingRequest, ready: treatmentRequestReady } = useTreatmentRequest();
+    const isWard = session?.userType === 'WARD';
+    const isInstitution = session?.userType === 'INSTITUTIONS';
+    const isMedicalUser = isWard || isInstitution;
+    const activeChatRoomId = inProgressRequest?.chatRoomId;
+    const routeChatRoomId = props.route.name === 'Chat' ? Number(props.route.params?.chatRoomId) : null;
+    const isLegacyWardRequestRoute = isWard && props.route.name === 'RequestList';
+    const isWaitingRouteLocked = isWard && Boolean(waitingRequest) && props.route.name !== 'InstitutionSearch';
+    const isAcceptedRouteLocked = isWard
+      && Boolean(activeRequest && (activeRequest.status === 'ACCEPTED' || (activeRequest.status === 'IN_PROGRESS' && !activeChatRoomId)))
+      && !['InstitutionSearch', 'Chat'].includes(props.route.name);
+    const isTreatmentRouteLocked = isMedicalUser
+      && Boolean(activeChatRoomId)
+      && (props.route.name !== 'Chat' || routeChatRoomId !== activeChatRoomId);
 
     useEffect(() => {
       if (!session) {
@@ -59,10 +74,20 @@ function protectedScreen(Component: ComponentType<any>) {
           redirectTo: props.route.name,
           redirectParams: props.route.params,
         });
+      } else if (treatmentRequestReady && isTreatmentRouteLocked && activeChatRoomId) {
+        props.navigation.replace('Chat', {
+          chatRoomId: activeChatRoomId,
+          requestId: inProgressRequest?.medicalRequestId,
+        });
+      } else if (treatmentRequestReady && (isLegacyWardRequestRoute || isWaitingRouteLocked || isAcceptedRouteLocked)) {
+        props.navigation.replace('InstitutionSearch');
       }
-    }, [props.navigation, props.route.name, props.route.params, session]);
+    }, [activeChatRoomId, inProgressRequest?.medicalRequestId, isAcceptedRouteLocked, isLegacyWardRequestRoute, isTreatmentRouteLocked, isWaitingRouteLocked, props.navigation, props.route.name, props.route.params, session, treatmentRequestReady]);
 
     if (!session) return <RouteLoading label="로그인 화면으로 이동하고 있습니다." />;
+    if (isMedicalUser && !treatmentRequestReady) return <RouteLoading label="진료 요청 상태를 확인하고 있습니다." />;
+    if (isTreatmentRouteLocked) return <RouteLoading label="진료 중인 대화방으로 이동하고 있습니다." />;
+    if (isLegacyWardRequestRoute || isWaitingRouteLocked || isAcceptedRouteLocked) return <RouteLoading label="진료 요청 화면으로 이동하고 있습니다." />;
     return <Component {...props} />;
   };
 }

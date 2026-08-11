@@ -23,6 +23,7 @@ import {
   formatDate,
 } from '../components/Ui';
 import { useSession } from '../context/SessionContext';
+import { useTreatmentRequest } from '../context/TreatmentRequestContext';
 import { RootStackParamList } from '../navigation';
 import { loadChatLinks, rememberChatLink } from '../storage/chatLinks';
 import { colors, fontFamily, radius } from '../theme/theme';
@@ -42,6 +43,7 @@ const statusMeta = {
 
 export function RequestListScreen({ navigation }: Props) {
   const { session } = useSession();
+  const { adoptRequest } = useTreatmentRequest();
   const { width } = useWindowDimensions();
   const compact = width < 920;
   const [filter, setFilter] = useState<Filter>('ALL');
@@ -90,10 +92,19 @@ export function RequestListScreen({ navigation }: Props) {
     setError(null);
     setNotice(null);
     try {
-      if (accept) await teamApi.acceptRequest(request.medicalRequestId);
-      else await teamApi.rejectRequest(request.medicalRequestId);
+      const response = accept
+        ? await teamApi.acceptRequest(request.medicalRequestId)
+        : await teamApi.rejectRequest(request.medicalRequestId);
+      adoptRequest(response);
+      setRequests((current) => current.map((item) => item.medicalRequestId === response.medicalRequestId ? response : item));
+      if (accept) {
+        if (!response.chatRoomId) throw new Error('수락된 요청의 채팅방 번호를 확인하지 못했습니다.');
+        const nextLinks = await rememberChatLink(response.medicalRequestId, response.chatRoomId);
+        setChatLinks(nextLinks);
+        navigation.replace('Chat', { chatRoomId: response.chatRoomId, requestId: response.medicalRequestId });
+        return;
+      }
       setNotice(accept ? '진료 요청을 수락했습니다.' : '진료 요청을 거절했습니다.');
-      await load();
     } catch (caught) {
       setError(readableError(caught));
     } finally {
@@ -122,7 +133,7 @@ export function RequestListScreen({ navigation }: Props) {
   }
 
   function enterChat(request: MedicalRequest) {
-    const chatRoomId = chatLinks[String(request.medicalRequestId)];
+    const chatRoomId = request.chatRoomId ?? chatLinks[String(request.medicalRequestId)];
     if (!chatRoomId) return;
     navigation.navigate('Chat', { chatRoomId, requestId: request.medicalRequestId });
   }
@@ -146,7 +157,7 @@ export function RequestListScreen({ navigation }: Props) {
     done: requests.filter((request) => ['COMPLETED', 'REJECTED', 'CANCELED'].includes(request.status)).length,
   };
   const missingChatLink = requests.some(
-    (request) => request.status === 'IN_PROGRESS' && !chatLinks[String(request.medicalRequestId)],
+    (request) => request.status === 'IN_PROGRESS' && !request.chatRoomId && !chatLinks[String(request.medicalRequestId)],
   );
 
   return (
@@ -211,7 +222,7 @@ export function RequestListScreen({ navigation }: Props) {
         ) : null}
         {!loading && filtered.map((request) => {
           const meta = statusMeta[request.status];
-          const chatRoomId = chatLinks[String(request.medicalRequestId)];
+          const chatRoomId = request.chatRoomId ?? chatLinks[String(request.medicalRequestId)];
           if (request.status === 'COMPLETED' && isWard) {
             return (
               <View

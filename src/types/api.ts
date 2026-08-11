@@ -112,6 +112,8 @@ export type MedicalRequest = {
   respondedAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  chatRoomId: number | null;
+  archiveId: number | null;
 };
 
 export type Institution = {
