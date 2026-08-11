@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 
 import { useSession } from '../context/SessionContext';
+import { useTreatmentRequest } from '../context/TreatmentRequestContext';
 import { UserType } from '../types/api';
 import { colors, fontFamily, radius, spacing } from '../theme/theme';
 
@@ -28,21 +29,16 @@ type NavItem = {
 
 const roleNavigation: Record<UserType, NavItem[]> = {
   WARD: [
-    { route: 'Home', icon: '⌂', label: '홈' },
-    { route: 'InstitutionSearch', icon: '＋', label: '진료 요청' },
-    { route: 'RequestList', icon: '↗', label: '요청 현황' },
     { route: 'ArchiveList', icon: '▤', label: '진료 기록' },
     { route: 'Care', icon: '♡', label: '케어 연결' },
     { route: 'Inquiry', icon: '?', label: '문의하기' },
   ],
   GUARDIAN: [
-    { route: 'Home', icon: '⌂', label: '홈' },
     { route: 'Care', icon: '♡', label: '케어 연결' },
     { route: 'ArchiveList', icon: '▤', label: '진료 기록' },
     { route: 'Inquiry', icon: '?', label: '문의하기' },
   ],
   INSTITUTIONS: [
-    { route: 'Home', icon: '⌂', label: '홈' },
     { route: 'RequestList', icon: '＋', label: '진료 요청' },
     { route: 'Inquiry', icon: '?', label: '문의하기' },
   ],
@@ -82,9 +78,11 @@ export function Screen({
 
 function AppShell({ children }: PropsWithChildren) {
   const { session } = useSession();
+  const { waitingRequest } = useTreatmentRequest();
   const navigation = useNavigation<any>();
   const route = useRoute();
   const { width } = useWindowDimensions();
+  const [navigationBlocked, setNavigationBlocked] = useState(false);
   const mobile = width < 760;
   const compact = width >= 760 && width < 1100;
 
@@ -95,7 +93,13 @@ function AppShell({ children }: PropsWithChildren) {
     (item.route === 'ArchiveList' && route.name === 'ArchiveDetail') ||
     (item.route === 'Inquiry' && route.name === 'InquiryDetail');
 
-  const go = (name: string) => navigation.navigate(name);
+  const go = (name: string) => {
+    if (waitingRequest && name !== 'InstitutionSearch') {
+      setNavigationBlocked(true);
+      return;
+    }
+    navigation.navigate(name);
+  };
 
   return (
     <View style={styles.shell}>
@@ -226,6 +230,15 @@ function AppShell({ children }: PropsWithChildren) {
             </View>
           )}
           <View style={styles.topbarActions}>
+            {mobile && session.userType !== 'GUARDIAN' ? (
+              <Pressable
+                accessibilityLabel={session.userType === 'WARD' ? '새 진료 요청' : '새 진료 요청 확인'}
+                onPress={() => go(session.userType === 'WARD' ? 'InstitutionSearch' : 'RequestList')}
+                style={styles.mobileQuickAction}
+              >
+                <Text style={styles.mobileQuickActionText}>＋</Text>
+              </Pressable>
+            ) : null}
             {!mobile ? (
               <Pressable
                 accessibilityLabel="문의하기"
@@ -285,6 +298,18 @@ function AppShell({ children }: PropsWithChildren) {
           </ScrollView>
         </View>
       ) : null}
+
+      <ConfirmDialog
+        visible={navigationBlocked}
+        title="진료 요청 응답을 기다리고 있습니다."
+        description={`${waitingRequest?.institutionUserName ?? '기관 사용자'}의 응답 전에는 현재 요청 화면을 유지해 주세요. 요청이 거절되거나 취소되면 다른 메뉴를 이용할 수 있습니다.`}
+        confirmLabel="요청 화면 확인"
+        onCancel={() => setNavigationBlocked(false)}
+        onConfirm={() => {
+          setNavigationBlocked(false);
+          navigation.navigate('InstitutionSearch');
+        }}
+      />
     </View>
   );
 }
@@ -788,6 +813,8 @@ const styles = StyleSheet.create({
   avatarSmallText: { color: '#fff', fontFamily, fontSize: 10, fontWeight: '900' },
   profileText: { color: colors.text, fontFamily, fontSize: 11, fontWeight: '800', paddingRight: 5 },
   mobileWordmark: { width: 88, height: 34 },
+  mobileQuickAction: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  mobileQuickActionText: { color: '#fff', fontFamily, fontSize: 20, fontWeight: '700', lineHeight: 22 },
   mobileNav: {
     position: 'absolute',
     left: 0,

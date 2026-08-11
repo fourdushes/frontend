@@ -2,6 +2,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Pressable,
+  Platform,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -15,6 +16,7 @@ import {
   useAudioRecorderState,
 } from 'expo-audio';
 
+import { AudioQueueItem, useAutoVoiceRecorder } from '../audio/useAutoVoiceRecorder';
 import { readableError } from '../api/client';
 import { teamApi } from '../api/teamApi';
 import {
@@ -30,6 +32,7 @@ import {
   formatDate,
 } from '../components/Ui';
 import { useSession } from '../context/SessionContext';
+import { useTreatmentRequest } from '../context/TreatmentRequestContext';
 import { RootStackParamList } from '../navigation';
 import { colors, fontFamily, radius, spacing } from '../theme/theme';
 import { AiResponse, ChatMessage, ChatRoom } from '../types/api';
@@ -39,6 +42,7 @@ type RecordingStatus = 'IDLE' | 'RECORDING' | 'READY' | 'UPLOADING' | 'CONVERTIN
 
 export function ChatScreen({ navigation, route }: Props) {
   const { session } = useSession();
+  const { inProgressRequest, refresh: refreshTreatmentRequests } = useTreatmentRequest();
   const { width } = useWindowDimensions();
   const stacked = width < 1080;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -49,6 +53,7 @@ export function ChatScreen({ navigation, route }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [completionOpen, setCompletionOpen] = useState(false);
+  const [exitBlocked, setExitBlocked] = useState(false);
   const [summary, setSummary] = useState<AiResponse | null>(null);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('IDLE');
@@ -59,6 +64,17 @@ export function ChatScreen({ navigation, route }: Props) {
   const isWard = session?.userType === 'WARD';
   const isInstitution = session?.userType === 'INSTITUTIONS';
   const completed = room?.status === 'COMPLETED' || Boolean(summary);
+  const treatmentLocked = !completed && (room?.status === 'IN_PROGRESS' || inProgressRequest?.chatRoomId === chatRoomId);
+  const autoVoice = useAutoVoiceRecorder({
+    available: Boolean(isInstitution && Platform.OS === 'web'),
+    treatmentCompleted: completed,
+    upload: uploadAutoVoice,
+    onUploaded: (message) => {
+      setMessages((current) => current.some((item) => item.messageId === message.messageId)
+        ? current
+        : [...current, message]);
+    },
+  });
 
   const refresh = useCallback(async (silent = false) => {
     if ((!isWard && !isInstitution) || refreshing.current) return;
@@ -69,10 +85,13 @@ export function ChatScreen({ navigation, route }: Props) {
         isInstitution
           ? teamApi.getInstitutionMessages(chatRoomId)
           : teamApi.getWardMessages(chatRoomId),
-        isWard ? teamApi.getChatRoom(chatRoomId) : Promise.resolve(null),
+        teamApi.getChatRoom(chatRoomId),
       ]);
       setMessages(nextMessages ?? []);
-      if (nextRoom) setRoom(nextRoom);
+      if (nextRoom) {
+        setRoom(nextRoom);
+        if (nextRoom.status === 'COMPLETED') void refreshTreatmentRequests(true);
+      }
       setError(null);
     } catch (caught) {
       setError(readableError(caught));
@@ -80,7 +99,7 @@ export function ChatScreen({ navigation, route }: Props) {
       refreshing.current = false;
       if (!silent) setLoading(false);
     }
-  }, [chatRoomId, isInstitution, isWard]);
+  }, [chatRoomId, isInstitution, isWard, refreshTreatmentRequests]);
 
   useEffect(() => {
     void refresh();
@@ -91,6 +110,23 @@ export function ChatScreen({ navigation, route }: Props) {
     const timer = setInterval(() => void refresh(true), 2500);
     return () => clearInterval(timer);
   }, [autoRefresh, completed, refresh]);
+
+  useEffect(() => {
+    if (!treatmentLocked) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    const unsubscribe = navigation.addListener('beforeRemove', (event) => {
+      event.preventDefault();
+      setExitBlocked(true);
+    });
+    if (typeof window !== 'undefined') window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      unsubscribe();
+      if (typeof window !== 'undefined') window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [navigation, treatmentLocked]);
 
   async function sendMessage() {
     const value = content.trim();
@@ -121,6 +157,7 @@ export function ChatScreen({ navigation, route }: Props) {
       setAutoRefresh(false);
       setCompletionOpen(false);
       await refresh(true);
+      await refreshTreatmentRequests(true);
     } catch (caught) {
       setError(readableError(caught));
     } finally {
@@ -188,6 +225,12 @@ export function ChatScreen({ navigation, route }: Props) {
       setError(readableError(caught));
       setRecordingStatus('READY');
     }
+  }
+
+  async function uploadAutoVoice(item: AudioQueueItem) {
+    const formData = new FormData();
+    formData.append('file', item.blob, `hearo-${item.localId}.wav`);
+    return teamApi.uploadRecording(chatRoomId, formData);
   }
 
   function discardRecording() {
@@ -328,46 +371,43 @@ export function ChatScreen({ navigation, route }: Props) {
 
           {!completed && isInstitution ? (
             <View style={styles.recorder}>
-              <View style={styles.recorderHeader}>
-                <View style={[styles.recordDot, recordingStatus === 'RECORDING' && styles.recordDotActive]} />
-                <View style={styles.recorderCopy}>
-                  <Text style={styles.recorderTitle}>{recordingLabel(recordingStatus)}</Text>
-                  <Text style={styles.recorderText}>
-                    {recordingStatus === 'RECORDING'
-                      ? `${formatDuration(recorderState.durationMillis)} 동안 녹음 중입니다.`
-                      : recordingStatus === 'READY'
-                        ? '녹음을 서버로 보내기 전 다시 녹음할 수 있습니다.'
-                        : recordingStatus === 'UPLOADING'
-                          ? '녹음 파일을 안전하게 업로드하고 있습니다.'
-                          : recordingStatus === 'CONVERTING'
-                            ? '서버에서 음성을 텍스트로 변환하고 있습니다.'
-                            : '마이크 권한을 확인한 뒤 음성 답변을 녹음하세요.'}
-                  </Text>
-                </View>
-                <StatusBadge
-                  label={recordingStatus === 'RECORDING' ? '녹음 중' : recordingStatus === 'READY' ? '전송 준비' : '대기'}
-                  tone={recordingStatus === 'RECORDING' ? 'danger' : recordingStatus === 'READY' ? 'primary' : 'neutral'}
-                />
-              </View>
-              <View style={styles.recordActions}>
-                <Button
-                  title="녹음 시작"
-                  onPress={startRecording}
-                  disabled={recordingStatus !== 'IDLE'}
-                />
-                <Button
-                  title="녹음 정지"
-                  tone="secondary"
-                  onPress={stopRecording}
-                  disabled={recordingStatus !== 'RECORDING'}
-                />
-                {recordingStatus === 'READY' ? (
-                  <>
-                    <Button title="다시 녹음" tone="ghost" onPress={discardRecording} />
-                    <Button title="음성 답변 전송" onPress={sendRecording} />
-                  </>
-                ) : null}
-              </View>
+              {Platform.OS === 'web' ? (
+                <AutoVoiceRecorderPanel autoVoice={autoVoice} />
+              ) : (
+                <>
+                  <View style={styles.recorderHeader}>
+                    <View style={[styles.recordDot, recordingStatus === 'RECORDING' && styles.recordDotActive]} />
+                    <View style={styles.recorderCopy}>
+                      <Text style={styles.recorderTitle}>{recordingLabel(recordingStatus)}</Text>
+                      <Text style={styles.recorderText}>
+                        {recordingStatus === 'RECORDING'
+                          ? `${formatDuration(recorderState.durationMillis)} 동안 녹음 중입니다.`
+                          : recordingStatus === 'READY'
+                            ? '녹음을 서버로 보내기 전 다시 녹음할 수 있습니다.'
+                            : recordingStatus === 'UPLOADING'
+                              ? '녹음 파일을 안전하게 업로드하고 있습니다.'
+                              : recordingStatus === 'CONVERTING'
+                                ? '서버에서 음성을 텍스트로 변환하고 있습니다.'
+                                : '현재 앱 환경에서는 수동 녹음 방식으로 음성 답변을 전송합니다.'}
+                      </Text>
+                    </View>
+                    <StatusBadge
+                      label={recordingStatus === 'RECORDING' ? '녹음 중' : recordingStatus === 'READY' ? '전송 준비' : '대기'}
+                      tone={recordingStatus === 'RECORDING' ? 'danger' : recordingStatus === 'READY' ? 'primary' : 'neutral'}
+                    />
+                  </View>
+                  <View style={styles.recordActions}>
+                    <Button title="진료 시작하기" onPress={startRecording} disabled={recordingStatus !== 'IDLE'} />
+                    <Button title="녹음 정지" tone="secondary" onPress={stopRecording} disabled={recordingStatus !== 'RECORDING'} />
+                    {recordingStatus === 'READY' ? (
+                      <>
+                        <Button title="다시 녹음" tone="ghost" onPress={discardRecording} />
+                        <Button title="음성 답변 전송" onPress={sendRecording} />
+                      </>
+                    ) : null}
+                  </View>
+                </>
+              )}
             </View>
           ) : null}
         </View>
@@ -456,8 +496,101 @@ export function ChatScreen({ navigation, route }: Props) {
         onCancel={() => setCompletionOpen(false)}
         onConfirm={completeTreatment}
       />
+      <ConfirmDialog
+        visible={exitBlocked}
+        title="진료 중에는 다른 페이지로 이동할 수 없습니다."
+        description="피보호자가 진료 종료를 완료하면 메뉴와 다른 페이지를 다시 이용할 수 있습니다. 현재 채팅방에서 진료를 계속해 주세요."
+        confirmLabel="진료 계속하기"
+        onCancel={() => setExitBlocked(false)}
+        onConfirm={() => setExitBlocked(false)}
+      />
     </Screen>
   );
+}
+
+function AutoVoiceRecorderPanel({ autoVoice }: { autoVoice: ReturnType<typeof useAutoVoiceRecorder> }) {
+  const capture = autoCaptureMeta(autoVoice.captureState);
+  const pendingCount = autoVoice.queue.filter((item) => ['queued', 'uploading', 'processing'].includes(item.status)).length;
+  const completedCount = autoVoice.queue.filter((item) => item.status === 'completed').length;
+  const failedCount = autoVoice.queue.filter((item) => item.status === 'failed').length;
+  const meterScale = Math.min(100, autoVoice.meter / (autoVoice.thresholds?.startThreshold || 0.05) * 100);
+  const canStart = ['IDLE', 'ERROR'].includes(autoVoice.captureState);
+
+  return (
+    <>
+      <View style={styles.recorderHeader}>
+        <View style={[styles.recordDot, ['SPEECH_DETECTED', 'RECORDING', 'SILENCE'].includes(autoVoice.captureState) && styles.recordDotActive]} />
+        <View style={styles.recorderCopy}>
+          <Text style={styles.recorderTitle}>{capture.title}</Text>
+          <Text style={styles.recorderText}>{capture.description}</Text>
+        </View>
+        <StatusBadge label={capture.badge} tone={capture.tone} />
+      </View>
+
+      <View style={styles.meterCard}>
+        <View style={styles.meterHeader}>
+          <Text style={styles.meterLabel}>실시간 발화 감지</Text>
+          <Text style={styles.meterValue}>{autoVoice.thresholds ? '주변 소음 보정 완료' : '측정 대기'}</Text>
+        </View>
+        <View style={styles.meterTrack}>
+          <View style={[styles.meterFill, { width: `${meterScale}%` } as never]} />
+        </View>
+        <Text style={styles.meterHint}>말을 마친 뒤 2.5초 동안 침묵하면 음성 조각을 자동으로 전송합니다.</Text>
+      </View>
+
+      {!autoVoice.supported ? <Notice tone="error">현재 브라우저는 자동 발화 녹음을 지원하지 않습니다.</Notice> : null}
+      {autoVoice.error ? <Notice tone="error" title="자동 녹음을 확인해 주세요.">{autoVoice.error}</Notice> : null}
+
+      <View style={styles.recordActions}>
+        <Button title="진료 시작하기" onPress={autoVoice.start} disabled={!autoVoice.supported || !canStart} />
+        <Button title="자동 녹음 종료" tone="secondary" onPress={() => autoVoice.stop(true)} disabled={canStart || autoVoice.captureState === 'COMPLETED'} />
+        {failedCount ? <Button title="실패 조각 다시 전송" tone="ghost" onPress={autoVoice.retryFailed} /> : null}
+      </View>
+
+      <View style={styles.queueCard}>
+        <View style={styles.queueHeader}>
+          <View>
+            <Text style={styles.queueTitle}>순차 음성 전송 큐</Text>
+            <Text style={styles.queueDescription}>발화 순서대로 한 번에 하나씩 텍스트 변환을 요청합니다.</Text>
+          </View>
+          <StatusBadge label={`대기 ${pendingCount} · 완료 ${completedCount}`} tone={failedCount ? 'danger' : pendingCount ? 'warning' : 'success'} />
+        </View>
+        {autoVoice.queue.length ? autoVoice.queue.slice(-4).map((item) => {
+          const queueMeta = audioQueueMeta(item.status);
+          return (
+            <View key={item.localId} style={styles.queueRow}>
+              <View style={styles.queueSequence}><Text style={styles.queueSequenceText}>{String(item.sequence).padStart(2, '0')}</Text></View>
+              <View style={styles.queueCopy}>
+                <Text style={styles.queueItemTitle}>음성 조각 #{item.sequence} · {(item.durationMs / 1000).toFixed(1)}초</Text>
+                <Text style={styles.queueItemText}>{item.error || `실제 발화 ${(item.speechDurationMs / 1000).toFixed(1)}초 · 재시도 ${item.retryCount}회`}</Text>
+              </View>
+              <StatusBadge label={queueMeta.label} tone={queueMeta.tone} />
+            </View>
+          );
+        }) : <Text style={styles.queueEmpty}>진료를 시작하면 감지된 발화가 여기에 순서대로 표시됩니다.</Text>}
+      </View>
+    </>
+  );
+}
+
+function autoCaptureMeta(state: ReturnType<typeof useAutoVoiceRecorder>['captureState']) {
+  if (state === 'REQUESTING_PERMISSION') return { title: '마이크 권한 요청 중', description: '브라우저의 마이크 사용 요청을 확인해 주세요.', badge: '권한 확인', tone: 'warning' as const };
+  if (state === 'CALIBRATING') return { title: '주변 소음을 측정하고 있습니다.', description: '1.5초 동안 잠시 말하지 않으면 환경에 맞는 기준을 설정합니다.', badge: '소음 측정', tone: 'warning' as const };
+  if (state === 'LISTENING') return { title: '발화를 기다리고 있습니다.', description: '말을 시작하면 자동으로 음성을 감지하고 녹음합니다.', badge: '듣는 중', tone: 'success' as const };
+  if (state === 'SPEECH_DETECTED') return { title: '발화를 감지했습니다.', description: '짧은 소음인지 실제 발화인지 확인한 뒤 녹음을 유지합니다.', badge: '발화 감지', tone: 'primary' as const };
+  if (state === 'RECORDING') return { title: '음성을 자동 녹음하고 있습니다.', description: '말을 멈추면 침묵 시간을 확인합니다.', badge: '녹음 중', tone: 'danger' as const };
+  if (state === 'SILENCE') return { title: '침묵 구간을 확인하고 있습니다.', description: '2.5초 동안 말이 없으면 현재 발화를 분할해 전송합니다.', badge: '침묵 확인', tone: 'warning' as const };
+  if (state === 'ERROR') return { title: '자동 녹음이 중지되었습니다.', description: '오류 내용을 확인한 뒤 진료 시작하기를 다시 눌러 주세요.', badge: '오류', tone: 'danger' as const };
+  if (state === 'COMPLETED') return { title: '진료가 종료되어 마이크를 닫았습니다.', description: '종료 후에는 새로운 음성 조각을 만들거나 전송하지 않습니다.', badge: '진료 종료', tone: 'neutral' as const };
+  return { title: '자동 발화 녹음을 시작해 주세요.', description: '처음 한 번만 진료 시작하기를 누르면 이후 발화를 자동으로 나눠 전송합니다.', badge: '진료 시작 전', tone: 'neutral' as const };
+}
+
+function audioQueueMeta(status: AudioQueueItem['status']) {
+  if (status === 'queued') return { label: '전송 대기', tone: 'warning' as const };
+  if (status === 'uploading') return { label: '업로드 중', tone: 'primary' as const };
+  if (status === 'processing') return { label: '텍스트 변환 중', tone: 'primary' as const };
+  if (status === 'completed') return { label: '변환 완료', tone: 'success' as const };
+  return { label: '전송 실패', tone: 'danger' as const };
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -545,6 +678,24 @@ const styles = StyleSheet.create({
   recorderTitle: { color: colors.text, fontFamily, fontSize: 11, fontWeight: '900' },
   recorderText: { color: colors.muted, fontFamily, fontSize: 9, lineHeight: 15, marginTop: 4 },
   recordActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  meterCard: { borderWidth: 1, borderColor: colors.primaryBorder, borderRadius: radius.md, backgroundColor: colors.primarySoft, padding: 13, gap: 8 },
+  meterHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  meterLabel: { color: colors.text, fontFamily, fontSize: 9, fontWeight: '900' },
+  meterValue: { color: colors.primary, fontFamily, fontSize: 9, fontWeight: '900' },
+  meterTrack: { height: 7, borderRadius: 4, backgroundColor: colors.surface, overflow: 'hidden' },
+  meterFill: { height: '100%', borderRadius: 4, backgroundColor: colors.primary },
+  meterHint: { color: colors.muted, fontFamily, fontSize: 8, lineHeight: 13 },
+  queueCard: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, padding: 13, gap: 9 },
+  queueHeader: { gap: 3 },
+  queueTitle: { color: colors.text, fontFamily, fontSize: 10, fontWeight: '900' },
+  queueDescription: { color: colors.muted, fontFamily, fontSize: 8, lineHeight: 13 },
+  queueRow: { minHeight: 45, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 9 },
+  queueSequence: { width: 25, height: 25, borderRadius: 13, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  queueSequenceText: { color: colors.primary, fontFamily, fontSize: 8, fontWeight: '900' },
+  queueCopy: { flex: 1 },
+  queueItemTitle: { color: colors.text, fontFamily, fontSize: 9, fontWeight: '900' },
+  queueItemText: { color: colors.muted, fontFamily, fontSize: 8, lineHeight: 13, marginTop: 2 },
+  queueEmpty: { borderTopWidth: 1, borderTopColor: colors.border, color: colors.muted, fontFamily, fontSize: 8, lineHeight: 14, paddingTop: 9 },
   sessionCard: { flex: 1, minWidth: 320, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, backgroundColor: colors.surface, padding: 21 },
   sessionTitle: { color: colors.text, fontFamily, fontSize: 17, fontWeight: '900', marginTop: 6, marginBottom: 15 },
   infoRow: { minHeight: 40, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
