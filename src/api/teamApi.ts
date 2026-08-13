@@ -17,7 +17,6 @@ import {
   MedicalRequest,
   MyPage,
   PasswordChangePreparation,
-  StartTreatment,
   UserType,
   WardSearchResponse,
 } from '../types/api';
@@ -150,9 +149,9 @@ export const teamApi = {
       apiClient.post(`/api/medical-treatment/institution/requests/${requestId}/reject`),
     ),
 
-  startTreatment: (requestId: number) =>
-    unwrap<StartTreatment>(
-      apiClient.post(`/api/medical-treatment/ward/requests/${requestId}/start`),
+  cancelRequest: (requestId: number) =>
+    unwrap<MedicalRequest>(
+      apiClient.post(`/api/medical-treatment/ward/requests/${requestId}/cancel`),
     ),
 
   getChatRoom: (chatRoomId: number) =>
