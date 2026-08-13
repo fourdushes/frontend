@@ -148,11 +148,6 @@ export type ChatRoom = {
   lastMessageAt: string | null;
 };
 
-export type StartTreatment = {
-  chatRoomId: number;
-  archiveId: number;
-};
-
 export type AiResponse = {
   wardUserId: string;
   archiveId: number;

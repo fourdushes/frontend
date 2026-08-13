@@ -25,7 +25,6 @@ import {
 import { useSession } from '../context/SessionContext';
 import { useTreatmentRequest } from '../context/TreatmentRequestContext';
 import { RootStackParamList } from '../navigation';
-import { loadChatLinks, rememberChatLink } from '../storage/chatLinks';
 import { colors, fontFamily, radius } from '../theme/theme';
 import { MedicalRequest } from '../types/api';
 
@@ -48,7 +47,6 @@ export function RequestListScreen({ navigation }: Props) {
   const compact = width < 920;
   const [filter, setFilter] = useState<Filter>('ALL');
   const [requests, setRequests] = useState<MedicalRequest[]>([]);
-  const [chatLinks, setChatLinks] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,12 +60,8 @@ export function RequestListScreen({ navigation }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const [items, links] = await Promise.all([
-        isWard ? teamApi.getWardRequests() : teamApi.getInstitutionRequests(),
-        loadChatLinks(),
-      ]);
+      const items = isWard ? await teamApi.getWardRequests() : await teamApi.getInstitutionRequests();
       setRequests(items ?? []);
-      setChatLinks(links);
     } catch (caught) {
       setError(readableError(caught));
     } finally {
@@ -99,8 +93,6 @@ export function RequestListScreen({ navigation }: Props) {
       setRequests((current) => current.map((item) => item.medicalRequestId === response.medicalRequestId ? response : item));
       if (accept) {
         if (!response.chatRoomId) throw new Error('수락된 요청의 채팅방 번호를 확인하지 못했습니다.');
-        const nextLinks = await rememberChatLink(response.medicalRequestId, response.chatRoomId);
-        setChatLinks(nextLinks);
         navigation.replace('Chat', { chatRoomId: response.chatRoomId, requestId: response.medicalRequestId });
         return;
       }
@@ -113,27 +105,8 @@ export function RequestListScreen({ navigation }: Props) {
     }
   }
 
-  async function start(request: MedicalRequest) {
-    if (processingId !== null) return;
-    setProcessingId(request.medicalRequestId);
-    setError(null);
-    try {
-      const result = await teamApi.startTreatment(request.medicalRequestId);
-      const nextLinks = await rememberChatLink(request.medicalRequestId, result.chatRoomId);
-      setChatLinks(nextLinks);
-      navigation.navigate('Chat', {
-        chatRoomId: result.chatRoomId,
-        requestId: request.medicalRequestId,
-      });
-    } catch (caught) {
-      setError(readableError(caught));
-    } finally {
-      setProcessingId(null);
-    }
-  }
-
   function enterChat(request: MedicalRequest) {
-    const chatRoomId = request.chatRoomId ?? chatLinks[String(request.medicalRequestId)];
+    const chatRoomId = request.chatRoomId;
     if (!chatRoomId) return;
     navigation.navigate('Chat', { chatRoomId, requestId: request.medicalRequestId });
   }
@@ -157,7 +130,7 @@ export function RequestListScreen({ navigation }: Props) {
     done: requests.filter((request) => ['COMPLETED', 'REJECTED', 'CANCELED'].includes(request.status)).length,
   };
   const missingChatLink = requests.some(
-    (request) => request.status === 'IN_PROGRESS' && !request.chatRoomId && !chatLinks[String(request.medicalRequestId)],
+    (request) => request.status === 'IN_PROGRESS' && !request.chatRoomId,
   );
 
   return (
@@ -167,7 +140,7 @@ export function RequestListScreen({ navigation }: Props) {
         title={isWard ? '내 진료 요청' : '도착한 진료 요청'}
         description={
           isWard
-            ? '기관의 응답을 확인하고 수락된 요청에서 진료를 시작하세요.'
+            ? '기관의 응답을 확인하고 진료가 시작되면 대화방에 입장하세요.'
             : '피보호자의 요청을 검토하고 수락 또는 거절하세요.'
         }
         actions={
@@ -185,7 +158,7 @@ export function RequestListScreen({ navigation }: Props) {
       {notice ? <Notice tone="success">{notice}</Notice> : null}
       {missingChatLink ? (
         <Notice tone="warning" title="일부 진행 중 진료의 대화방 연결 정보가 없습니다.">
-          현재 백엔드의 요청 목록 응답에는 채팅방 번호가 포함되지 않습니다. 이 기기에서 시작한 진료만 바로 다시 입장할 수 있습니다.
+          요청 목록을 새로고침해도 계속 표시되면 서버의 진료방 연결 정보를 확인해 주세요.
         </Notice>
       ) : null}
 
@@ -222,7 +195,7 @@ export function RequestListScreen({ navigation }: Props) {
         ) : null}
         {!loading && filtered.map((request) => {
           const meta = statusMeta[request.status];
-          const chatRoomId = request.chatRoomId ?? chatLinks[String(request.medicalRequestId)];
+          const chatRoomId = request.chatRoomId;
           if (request.status === 'COMPLETED' && isWard) {
             return (
               <View
@@ -321,14 +294,7 @@ export function RequestListScreen({ navigation }: Props) {
                       />
                     </>
                   ) : null}
-                  {isWard && request.status === 'ACCEPTED' ? (
-                    <Button
-                      title={processingId === request.medicalRequestId ? '준비 중…' : '진료 시작'}
-                      compact
-                      onPress={() => start(request)}
-                      disabled={processingId !== null}
-                    />
-                  ) : null}
+                  {request.status === 'ACCEPTED' ? <StatusBadge label="진료방 생성 대기" tone="warning" /> : null}
                   {request.status === 'IN_PROGRESS' && chatRoomId ? (
                     <Button title="대화방 입장" compact onPress={() => enterChat(request)} />
                   ) : null}

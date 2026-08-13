@@ -8,7 +8,6 @@ import { Button, ConfirmDialog, Field, Notice, PageHeader, Screen, StatusBadge, 
 import { useSession } from '../context/SessionContext';
 import { useTreatmentRequest } from '../context/TreatmentRequestContext';
 import { RootStackParamList } from '../navigation';
-import { loadChatLinks, rememberChatLink } from '../storage/chatLinks';
 import { colors, fontFamily, radius } from '../theme/theme';
 import { Institution, MedicalRequest } from '../types/api';
 
@@ -31,7 +30,7 @@ const activeStatusMeta = {
     label: '진료 진행 중',
     tone: 'primary' as const,
     title: '진료가 이미 시작되었습니다.',
-    description: '이 기기에 저장된 채팅방 연결 정보를 확인하고 있습니다.',
+    description: '서버에서 확인한 진료방으로 이동합니다.',
   },
 };
 
@@ -45,14 +44,13 @@ export function InstitutionSearchScreen({ navigation }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [searching, setSearching] = useState(false);
   const [requestingId, setRequestingId] = useState<string | null>(null);
-  const [startingId, setStartingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resolvedNotice, setResolvedNotice] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [canceling, setCanceling] = useState(false);
   const [exitBlocked, setExitBlocked] = useState(false);
   const searchSequence = useRef(0);
   const trackedRequestId = useRef<number | null>(null);
-  const autoStartRequestId = useRef<number | null>(null);
 
   useEffect(() => {
     if (session?.userType !== 'WARD' || activeRequest || !ready || requestSyncError) {
@@ -104,42 +102,13 @@ export function InstitutionSearchScreen({ navigation }: Props) {
 
   useEffect(() => {
     if (!activeRequest || !['ACCEPTED', 'IN_PROGRESS'].includes(activeRequest.status)) return;
-    if (autoStartRequestId.current === activeRequest.medicalRequestId) return;
-    autoStartRequestId.current = activeRequest.medicalRequestId;
-    let disposed = false;
-
-    const enterAcceptedTreatment = async () => {
-      setStartingId(activeRequest.medicalRequestId);
-      setError(null);
-      try {
-        const links = await loadChatLinks();
-        const chatRoomId = activeRequest.chatRoomId ?? links[String(activeRequest.medicalRequestId)];
-        if (chatRoomId) {
-          if (!disposed) navigation.replace('Chat', { chatRoomId, requestId: activeRequest.medicalRequestId });
-          return;
-        }
-        if (activeRequest.status === 'IN_PROGRESS') {
-          throw new Error('진료는 시작되었지만 현재 API 응답에 채팅방 번호가 없어 이 기기에서는 자동으로 입장할 수 없습니다.');
-        }
-        const result = await teamApi.startTreatment(activeRequest.medicalRequestId);
-        await rememberChatLink(activeRequest.medicalRequestId, result.chatRoomId);
-        adoptRequest({ ...activeRequest, status: 'IN_PROGRESS', startedAt: new Date().toISOString(), chatRoomId: result.chatRoomId, archiveId: result.archiveId });
-        if (!disposed) navigation.replace('Chat', { chatRoomId: result.chatRoomId, requestId: activeRequest.medicalRequestId });
-      } catch (caught) {
-        if (!disposed) {
-          setError(readableError(caught));
-          autoStartRequestId.current = null;
-        }
-      } finally {
-        if (!disposed) setStartingId(null);
-      }
-    };
-
-    void enterAcceptedTreatment();
-    return () => {
-      disposed = true;
-    };
-  }, [activeRequest, adoptRequest, navigation]);
+    if (!activeRequest.chatRoomId) {
+      setError('요청이 수락되었지만 서버 응답에서 진료방 번호를 확인하지 못했습니다.');
+      return;
+    }
+    setError(null);
+    navigation.replace('Chat', { chatRoomId: activeRequest.chatRoomId, requestId: activeRequest.medicalRequestId });
+  }, [activeRequest, navigation]);
 
   useEffect(() => {
     if (!waitingRequest) return;
@@ -173,6 +142,21 @@ export function InstitutionSearchScreen({ navigation }: Props) {
       setError(readableError(caught));
     } finally {
       setRequestingId(null);
+    }
+  }
+
+  async function cancelTreatmentRequest() {
+    if (!activeRequest || activeRequest.status !== 'REQUESTED' || canceling) return;
+    setCanceling(true);
+    setError(null);
+    try {
+      const canceled = await teamApi.cancelRequest(activeRequest.medicalRequestId);
+      adoptRequest(canceled);
+      setCancelOpen(false);
+    } catch (caught) {
+      setError(readableError(caught));
+    } finally {
+      setCanceling(false);
     }
   }
 
@@ -291,18 +275,18 @@ export function InstitutionSearchScreen({ navigation }: Props) {
                   <Text style={styles.activeRequestMeta}>기관 사용자 {activeRequest.institutionUserId} · {formatDate(activeRequest.createdAt)}</Text>
                 </View>
               </View>
-              <StatusBadge label={startingId ? '채팅방 준비 중' : activeMeta.label} tone={activeMeta.tone} />
+              <StatusBadge label={activeMeta.label} tone={activeMeta.tone} />
             </View>
             <View style={styles.activeRequestStatus}>
               <View style={styles.statusPulse} />
               <View style={styles.statusCopy}>
-                <Text style={styles.statusTitle}>{startingId ? '수락을 확인해 진료 채팅방을 만들고 있습니다.' : activeMeta.title}</Text>
+                <Text style={styles.statusTitle}>{activeMeta.title}</Text>
                 <Text style={styles.statusDescription}>{activeMeta.description}</Text>
               </View>
               {activeRequest.status === 'REQUESTED' ? <Button title="취소하기" tone="secondary" compact onPress={() => setCancelOpen(true)} /> : null}
             </View>
             {activeRequest.status === 'REQUESTED' ? (
-              <Notice tone="warning">응답 대기 중에는 다른 메뉴로 이동할 수 없습니다. 현재 서버에는 요청 취소 API가 없어 취소 버튼은 연결 안내만 제공합니다.</Notice>
+              <Notice tone="warning">응답 대기 중에는 다른 메뉴로 이동할 수 없습니다. 요청을 취소하면 새로운 기관 사용자에게 다시 요청할 수 있습니다.</Notice>
             ) : null}
           </View>
         ) : null}
@@ -332,10 +316,11 @@ export function InstitutionSearchScreen({ navigation }: Props) {
       <ConfirmDialog
         visible={cancelOpen}
         title="진료 요청을 취소하시겠습니까?"
-        description="현재 백엔드에는 피보호자 진료 요청 취소 API가 없습니다. 실제 취소는 처리되지 않으며, API가 추가되면 이 확인 단계에 연결할 예정입니다."
-        confirmLabel="확인"
+        description="취소하면 해당 기관 사용자는 더 이상 이 요청을 수락할 수 없습니다."
+        confirmLabel="요청 취소"
+        busy={canceling}
         onCancel={() => setCancelOpen(false)}
-        onConfirm={() => setCancelOpen(false)}
+        onConfirm={cancelTreatmentRequest}
       />
       <ConfirmDialog
         visible={exitBlocked}
