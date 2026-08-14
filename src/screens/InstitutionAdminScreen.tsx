@@ -49,7 +49,7 @@ const statusMeta: Record<InstitutionUserState, { label: string; empty: string }>
   PENDING: { label: '승인 대기', empty: '승인 대기 중인 사용자가 없습니다.' },
   APPROVED: { label: '승인', empty: '승인된 사용자가 없습니다.' },
   REJECTED: { label: '거절', empty: '거절된 사용자가 없습니다.' },
-  DELETE: { label: '삭제', empty: '삭제 사용자 목록 조회 API가 제공되지 않습니다.' },
+  DELETE: { label: '삭제', empty: '삭제된 사용자가 없습니다.' },
 };
 
 const actionMeta: Record<Action, { label: string; description: string }> = {
@@ -68,6 +68,7 @@ export function InstitutionAdminScreen({ navigation }: Props) {
   const [response, setResponse] = useState<InstitutionUserPage | null>(null);
   const [counts, setCounts] = useState<Partial<Record<InstitutionUserState, number>>>({});
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sort, setSort] = useState<Sort>('name-asc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,8 +78,8 @@ export function InstitutionAdminScreen({ navigation }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
 
   const loadCounts = useCallback(async () => {
-    const states: InstitutionUserState[] = ['PENDING', 'APPROVED', 'REJECTED'];
-    const results = await Promise.allSettled(states.map((item) => institutionApi.list(item, 0, 1)));
+    const states: InstitutionUserState[] = ['PENDING', 'APPROVED', 'REJECTED', 'DELETE'];
+    const results = await Promise.allSettled(states.map((item) => institutionApi.searchInstitutionUsers('', item, 0, 1)));
     const next: Partial<Record<InstitutionUserState, number>> = {};
     results.forEach((result, index) => {
       if (result.status === 'fulfilled') next[states[index]] = result.value.totalCount;
@@ -88,23 +89,17 @@ export function InstitutionAdminScreen({ navigation }: Props) {
 
   const loadList = useCallback(async () => {
     if (!session) return;
-    if (status === 'DELETE') {
-      setResponse(null);
-      setError(null);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      setResponse(await institutionApi.list(status, page, 10));
+      setResponse(await institutionApi.searchInstitutionUsers(debouncedSearch, status, page, 10));
     } catch (caught) {
       setResponse(null);
       setError(readableError(caught));
     } finally {
       setLoading(false);
     }
-  }, [page, session, status]);
+  }, [debouncedSearch, page, session, status]);
 
   useEffect(() => {
     institutionApi.getSession().then((stored) => {
@@ -125,18 +120,20 @@ export function InstitutionAdminScreen({ navigation }: Props) {
     void loadList();
   }, [loadList]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(0);
+      setDebouncedSearch(search.trim());
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const users = useMemo(() => {
-    const keyword = search.trim().toLocaleLowerCase('ko-KR');
-    const filtered = (response?.judgeUserList || []).filter((user) => {
-      if (!keyword) return true;
-      return user.username.toLocaleLowerCase('ko-KR').includes(keyword)
-        || user.userId.toLocaleLowerCase('ko-KR').includes(keyword);
-    });
-    return filtered.sort((a, b) => {
+    return [...(response?.judgeUserList || [])].sort((a, b) => {
       if (sort === 'id-asc') return a.userId.localeCompare(b.userId, 'ko');
       return a.username.localeCompare(b.username, 'ko') * (sort === 'name-desc' ? -1 : 1);
     });
-  }, [response, search, sort]);
+  }, [response, sort]);
 
   async function logout() {
     await institutionApi.logout();
@@ -224,7 +221,7 @@ export function InstitutionAdminScreen({ navigation }: Props) {
                 <View style={[styles.metricLine, item === 'REJECTED' && styles.metricLineDanger, item === 'DELETE' && styles.metricLineMuted]} />
                 <Text style={styles.metricLabel}>{statusMeta[item].label}</Text>
                 <Text style={styles.metricValue}>{counts[item] ?? '—'}</Text>
-                <Text style={styles.metricCaption}>{item === 'DELETE' ? '조회 API 미제공' : '상태별 사용자 현황'}</Text>
+                <Text style={styles.metricCaption}>상태별 사용자 현황</Text>
               </View>
             ))}
           </View>
@@ -258,8 +255,6 @@ export function InstitutionAdminScreen({ navigation }: Props) {
               <View style={styles.stateBox}><ActivityIndicator color={palette.primary} /><Text style={styles.stateText}>사용자 목록을 불러오고 있습니다.</Text></View>
             ) : error ? (
               <View style={styles.stateBox}><Text style={styles.errorTitle}>목록을 불러오지 못했습니다.</Text><Text style={styles.stateText}>{error}</Text></View>
-            ) : status === 'DELETE' ? (
-              <View style={styles.stateBox}><Text style={styles.stateTitle}>삭제 목록을 불러올 수 없습니다.</Text><Text style={styles.stateText}>{statusMeta.DELETE.empty}</Text></View>
             ) : users.length === 0 ? (
               <View style={styles.stateBox}><Text style={styles.stateTitle}>{search ? '검색 결과가 없습니다.' : statusMeta[status].empty}</Text><Text style={styles.stateText}>{search ? '이름 또는 사용자 ID를 다시 확인해 주세요.' : '새로운 상태 변경이 발생하면 이곳에 표시됩니다.'}</Text></View>
             ) : (

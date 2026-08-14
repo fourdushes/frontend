@@ -109,6 +109,17 @@ export const institutionApi = {
     );
   },
 
+  async searchInstitutionUsers(keyword: string, state: InstitutionUserState, page = 0, size = 10) {
+    const session = await this.getSession();
+    if (!session) throw new Error('기관 로그인이 필요합니다.');
+    return unwrap<InstitutionUserPage>(
+      institutionClient.get('/api/institutions/search/institution-user', {
+        params: { keyword, institutionUserState: state, page, size },
+        headers: authorization(session),
+      }),
+    );
+  },
+
   async changeState(action: InstitutionAction, institutionsUserId: string) {
     const session = await this.getSession();
     if (!session) throw new Error('기관 로그인이 필요합니다.');
