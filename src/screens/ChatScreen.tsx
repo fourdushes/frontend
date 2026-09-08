@@ -518,11 +518,10 @@ function AutoVoiceRecorderPanel({ autoVoice }: { autoVoice: ReturnType<typeof us
 
   return (
     <>
-      <View style={styles.recorderHeader}>
+      <View style={[styles.recorderHeader, styles.autoRecorderHeader]}>
         <View style={[styles.recordDot, ['SPEECH_DETECTED', 'RECORDING', 'SILENCE'].includes(autoVoice.captureState) && styles.recordDotActive]} />
         <View style={styles.recorderCopy}>
-          <Text style={styles.recorderTitle}>{capture.title}</Text>
-          <Text style={styles.recorderText}>{capture.description}</Text>
+          <Text style={styles.autoRecorderTitle}>{capture.title}</Text>
         </View>
         <StatusBadge label={capture.badge} tone={capture.tone} />
       </View>
@@ -530,12 +529,18 @@ function AutoVoiceRecorderPanel({ autoVoice }: { autoVoice: ReturnType<typeof us
       <View style={styles.meterCard}>
         <View style={styles.meterHeader}>
           <Text style={styles.meterLabel}>실시간 발화 감지</Text>
-          <Text style={styles.meterValue}>{autoVoice.thresholds ? '주변 소음 보정 완료' : '측정 대기'}</Text>
+          <Text style={styles.meterValue}>
+            {autoVoice.captureState === 'CALIBRATING'
+              ? '주변 소음 측정 중'
+              : autoVoice.thresholds
+                ? '주변 소음 보정 완료'
+                : '측정 대기'}
+          </Text>
         </View>
         <View style={styles.meterTrack}>
           <View style={[styles.meterFill, { width: `${meterScale}%` } as never]} />
         </View>
-        <Text style={styles.meterHint}>말을 마친 뒤 2.5초 동안 침묵하면 음성 조각을 자동으로 전송합니다.</Text>
+        <Text style={styles.meterHint}>말을 마친 뒤 1.5초 동안 침묵하면 음성 조각을 자동으로 전송합니다.</Text>
       </View>
 
       {!autoVoice.supported ? <Notice tone="error">현재 브라우저는 자동 발화 녹음을 지원하지 않습니다.</Notice> : null}
@@ -550,7 +555,7 @@ function AutoVoiceRecorderPanel({ autoVoice }: { autoVoice: ReturnType<typeof us
       <View style={styles.queueCard}>
         <View style={styles.queueHeader}>
           <View>
-            <Text style={styles.queueTitle}>순차 음성 전송 큐</Text>
+            <Text style={styles.queueTitle}>음성 변환 대기</Text>
             <Text style={styles.queueDescription}>발화 순서대로 한 번에 하나씩 텍스트 변환을 요청합니다.</Text>
           </View>
           <StatusBadge label={`대기 ${pendingCount} · 완료 ${completedCount}`} tone={failedCount ? 'danger' : pendingCount ? 'warning' : 'success'} />
@@ -575,11 +580,11 @@ function AutoVoiceRecorderPanel({ autoVoice }: { autoVoice: ReturnType<typeof us
 
 function autoCaptureMeta(state: ReturnType<typeof useAutoVoiceRecorder>['captureState']) {
   if (state === 'REQUESTING_PERMISSION') return { title: '마이크 권한 요청 중', description: '브라우저의 마이크 사용 요청을 확인해 주세요.', badge: '권한 확인', tone: 'warning' as const };
-  if (state === 'CALIBRATING') return { title: '주변 소음을 측정하고 있습니다.', description: '1.5초 동안 잠시 말하지 않으면 환경에 맞는 기준을 설정합니다.', badge: '소음 측정', tone: 'warning' as const };
+  if (state === 'CALIBRATING') return { title: '주변 소음을 측정 중입니다.', description: '약 1.5초 동안 잠시 말하지 않으면 환경에 맞는 기준을 설정합니다.', badge: '소음 측정', tone: 'warning' as const };
   if (state === 'LISTENING') return { title: '발화를 기다리고 있습니다.', description: '말을 시작하면 자동으로 음성을 감지하고 녹음합니다.', badge: '듣는 중', tone: 'success' as const };
   if (state === 'SPEECH_DETECTED') return { title: '발화를 감지했습니다.', description: '짧은 소음인지 실제 발화인지 확인한 뒤 녹음을 유지합니다.', badge: '발화 감지', tone: 'primary' as const };
   if (state === 'RECORDING') return { title: '음성을 자동 녹음하고 있습니다.', description: '말을 멈추면 침묵 시간을 확인합니다.', badge: '녹음 중', tone: 'danger' as const };
-  if (state === 'SILENCE') return { title: '침묵 구간을 확인하고 있습니다.', description: '2.5초 동안 말이 없으면 현재 발화를 분할해 전송합니다.', badge: '침묵 확인', tone: 'warning' as const };
+  if (state === 'SILENCE') return { title: '침묵 구간을 확인하고 있습니다.', description: '1.5초 동안 말이 없으면 현재 발화를 분할해 전송합니다.', badge: '침묵 확인', tone: 'warning' as const };
   if (state === 'ERROR') return { title: '자동 녹음이 중지되었습니다.', description: '오류 내용을 확인한 뒤 진료 시작하기를 다시 눌러 주세요.', badge: '오류', tone: 'danger' as const };
   if (state === 'COMPLETED') return { title: '진료가 종료되어 마이크를 닫았습니다.', description: '종료 후에는 새로운 음성 조각을 만들거나 전송하지 않습니다.', badge: '진료 종료', tone: 'neutral' as const };
   return { title: '자동 발화 녹음을 시작해 주세요.', description: '처음 한 번만 진료 시작하기를 누르면 이후 발화를 자동으로 나눠 전송합니다.', badge: '진료 시작 전', tone: 'neutral' as const };
@@ -676,6 +681,8 @@ const styles = StyleSheet.create({
   recordDotActive: { backgroundColor: colors.danger },
   recorderCopy: { flex: 1 },
   recorderTitle: { color: colors.text, fontFamily, fontSize: 11, fontWeight: '900' },
+  autoRecorderHeader: { paddingVertical: 11, paddingHorizontal: 13 },
+  autoRecorderTitle: { color: colors.text, fontFamily, fontSize: 12, lineHeight: 18, fontWeight: '700' },
   recorderText: { color: colors.muted, fontFamily, fontSize: 9, lineHeight: 15, marginTop: 4 },
   recordActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   meterCard: { borderWidth: 1, borderColor: colors.primaryBorder, borderRadius: radius.md, backgroundColor: colors.primarySoft, padding: 13, gap: 8 },

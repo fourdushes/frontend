@@ -5,18 +5,19 @@ import { Platform } from 'react-native';
 import { ChatMessage } from '../types/api';
 
 export const voiceActivityConfig = {
-  silenceDurationMs: 2500,
+  silenceDurationMs: 1500,
   minimumSpeechDurationMs: 450,
   minimumClipDurationMs: 650,
   maximumClipDurationMs: 60000,
-  preRollMs: 200,
+  preRollMs: 700,
   postRollMs: 250,
   noiseCalibrationMs: 1500,
-  speechStartHoldMs: 140,
-  minimumStartThreshold: 0.018,
-  minimumStopThreshold: 0.012,
-  startMultiplier: 2.8,
-  stopMultiplier: 1.8,
+  speechStartHoldMs: 250,
+  minimumStartThreshold: 0.035,
+  minimumStopThreshold: 0.028,
+  startMultiplier: 4,
+  stopMultiplier: 2.8,
+  releasePeakRatio: 0.4,
   smoothingFactor: 0.82,
   processorBufferSize: 2048,
   maximumRetries: 2,
@@ -357,7 +358,11 @@ export function useAutoVoiceRecorder({ available, treatmentCompleted, upload, on
         clipFrames.push(frame);
         clipSamples += frame.length;
         peakRms = Math.max(peakRms, smoothedRms);
-        if (smoothedRms >= stopThreshold) {
+        const releaseThreshold = Math.max(
+          stopThreshold,
+          Math.min(startThreshold, peakRms * voiceActivityConfig.releasePeakRatio),
+        );
+        if (smoothedRms >= releaseThreshold) {
           voicedSamples += frame.length;
           lastVoiceSample = clipSamples;
           silenceStartedAt = null;
