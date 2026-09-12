@@ -122,7 +122,7 @@ export function MainPreviewScreen({ navigation }: Props) {
           <View style={styles.videoFrame}>
             {Platform.OS === 'web'
               ? createElement('video', {
-                  src: '/media/hearo-preview.m4v',
+                  src: '/media/hearo-main-preview-20260912.m4v',
                   autoPlay: playing,
                   muted: true,
                   loop: true,
