@@ -1,9 +1,11 @@
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { PropsWithChildren, ReactNode, useState } from 'react';
+import { PropsWithChildren, ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleProp,
@@ -11,10 +13,13 @@ import {
   Text,
   TextInput,
   TextInputProps,
+  TextStyle,
   useWindowDimensions,
   View,
   ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardVisible, useResponsiveLayout } from './Responsive';
 
 import { useSession } from '../context/SessionContext';
 import { useTreatmentRequest } from '../context/TreatmentRequestContext';
@@ -44,36 +49,34 @@ const roleNavigation: Record<UserType, NavItem[]> = {
   ],
 };
 
-const publicRoutes = ['MainPreview', 'Login', 'Signup', 'AccountRecovery'];
+const publicRoutes = ['MainPreview', 'Login', 'Signup', 'AccountRecovery', 'InstitutionAccountRecovery'];
 
 export function Screen({
   children,
   contentStyle,
-}: PropsWithChildren<{ contentStyle?: StyleProp<ViewStyle> }>) {
+  scrollable = true,
+  scrollResetKey,
+}: PropsWithChildren<{ contentStyle?: StyleProp<ViewStyle>; scrollable?: boolean; scrollResetKey?: string | number }>) {
   const { session } = useSession();
   const route = useRoute();
-
-  if (!session || publicRoutes.includes(route.name)) {
-    return (
-      <ScrollView
-        contentContainerStyle={[styles.publicScreen, contentStyle]}
-        keyboardShouldPersistTaps="handled"
-      >
-        {children}
-      </ScrollView>
-    );
-  }
-
-  return (
-    <AppShell>
-      <ScrollView
-        contentContainerStyle={[styles.appScreen, contentStyle]}
-        keyboardShouldPersistTaps="handled"
-      >
-        {children}
-      </ScrollView>
-    </AppShell>
-  );
+  const insets = useSafeAreaInsets();
+  const { mobile, short, pagePadding } = useResponsiveLayout();
+  const scroll = useRef<ScrollView>(null);
+  useEffect(() => { scroll.current?.scrollTo({ y: 0, animated: false }); }, [scrollResetKey]);
+  const isPublic = !session || publicRoutes.includes(route.name);
+  const content = [isPublic ? styles.publicScreen : styles.appScreen,
+    { paddingHorizontal: pagePadding, paddingTop: short ? 16 : 24, paddingBottom: 24 },
+    contentStyle];
+  const body = scrollable ? <ScrollView ref={scroll} style={styles.fill}
+    contentContainerStyle={content} keyboardShouldPersistTaps="handled"
+    keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}>{children}</ScrollView>
+    : <View style={[content, styles.fill, { minHeight: 0 }]}>{children}</View>;
+  return <KeyboardAvoidingView style={styles.fill}
+    behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
+    {isPublic ? <View style={[styles.fill, { paddingTop: insets.top, paddingBottom: insets.bottom,
+      paddingLeft: insets.left, paddingRight: insets.right }]}>{body}</View>
+      : <AppShell>{body}</AppShell>}
+  </KeyboardAvoidingView>;
 }
 
 function AppShell({ children }: PropsWithChildren) {
@@ -82,6 +85,8 @@ function AppShell({ children }: PropsWithChildren) {
   const navigation = useNavigation<any>();
   const route = useRoute();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardVisible();
   const [navigationBlocked, setNavigationBlocked] = useState(false);
   const mobile = width < 760;
   const compact = width >= 760 && width < 1100;
@@ -102,7 +107,10 @@ function AppShell({ children }: PropsWithChildren) {
   };
 
   return (
-    <View style={styles.shell}>
+    <View style={[styles.shell, mobile && { flexDirection: 'column' }, {
+      paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right,
+      paddingBottom: mobile ? 0 : insets.bottom,
+    }]}>
       {!mobile ? (
         <View style={[styles.sidebar, compact && styles.sidebarCompact]}>
           <Pressable
@@ -214,7 +222,7 @@ function AppShell({ children }: PropsWithChildren) {
       ) : null}
 
       <View style={styles.workspace}>
-        <View style={styles.topbar}>
+        <View style={[styles.topbar, mobile && { paddingHorizontal: 16 }]}>
           {mobile ? (
             <Pressable accessibilityLabel="홈으로 이동" onPress={() => go('Home')}>
               <Image
@@ -263,8 +271,8 @@ function AppShell({ children }: PropsWithChildren) {
         <View style={styles.workspaceBody}>{children}</View>
       </View>
 
-      {mobile ? (
-        <View style={styles.mobileNav}>
+      {mobile && !keyboardVisible ? (
+        <View style={[styles.mobileNav, { height: 68 + insets.bottom, paddingBottom: insets.bottom }]}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -372,12 +380,14 @@ export function Field({
   hint,
   error,
   style,
+  inputStyle,
   ...props
 }: TextInputProps & {
   label: string;
   hint?: string;
   error?: string | null;
   style?: StyleProp<ViewStyle>;
+  inputStyle?: StyleProp<TextStyle>;
 }) {
   const [focused, setFocused] = useState(false);
   return (
@@ -405,6 +415,7 @@ export function Field({
           focused && styles.inputFocused,
           error && styles.inputError,
           props.editable === false && styles.inputDisabled,
+          inputStyle,
         ]}
       />
       {error ? <Text accessibilityLiveRegion="polite" style={styles.fieldError}>{error}</Text> : null}
@@ -588,6 +599,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = '취소',
   destructive,
   busy,
   onCancel,
@@ -597,11 +609,14 @@ export function ConfirmDialog({
   title: string;
   description: string;
   confirmLabel: string;
+  cancelLabel?: string;
   destructive?: boolean;
   busy?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   return (
     <Modal
       animationType="fade"
@@ -610,13 +625,13 @@ export function ConfirmDialog({
       visible={visible}
     >
       <View accessibilityViewIsModal style={styles.modalOverlay}>
-        <View style={styles.dialog}>
+        <ScrollView style={[styles.dialog, { maxHeight: height - insets.top - insets.bottom - 40 }]} contentContainerStyle={styles.dialogContent}>
           <View style={styles.dialogIcon}><Text style={styles.dialogIconText}>!</Text></View>
           <Text style={styles.dialogTitle}>{title}</Text>
           <Text style={styles.dialogDescription}>{description}</Text>
           <View style={styles.dialogActions}>
             <View style={styles.dialogAction}>
-              <Button title="취소" tone="secondary" onPress={onCancel} disabled={busy} />
+              <Button title={cancelLabel} tone="secondary" onPress={onCancel} disabled={busy} />
             </View>
             <View style={styles.dialogAction}>
               <Button
@@ -627,7 +642,7 @@ export function ConfirmDialog({
               />
             </View>
           </View>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -657,28 +672,29 @@ export const uiStyles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
   },
-  flex: { flex: 1 },
+  flex: { flex: 1, minWidth: 0 },
   body: {
     color: colors.textSoft,
     fontFamily,
-    fontSize: 14,
-    lineHeight: 23,
+    fontSize: 15,
+    lineHeight: 24,
   },
   muted: {
     color: colors.muted,
     fontFamily,
-    fontSize: 12,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 21,
   },
   link: {
     color: colors.primary,
     fontFamily,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '800',
   },
 });
 
 const styles = StyleSheet.create({
+  fill: { flex: 1, minHeight: 0 },
   shell: { flex: 1, flexDirection: 'row', backgroundColor: colors.canvas },
   sidebar: {
     width: 252,
@@ -706,12 +722,12 @@ const styles = StyleSheet.create({
   },
   quickActionCompact: { justifyContent: 'center', paddingHorizontal: 0 },
   quickActionPressed: { backgroundColor: colors.primaryPressed, transform: [{ scale: 0.99 }] },
-  quickActionIcon: { color: '#fff', fontFamily, fontSize: 19, fontWeight: '600' },
-  quickActionText: { color: '#fff', fontFamily, fontSize: 12, fontWeight: '900' },
+  quickActionIcon: { color: '#fff', fontFamily, fontSize: 20, fontWeight: '600' },
+  quickActionText: { color: '#fff', fontFamily, fontSize: 14, fontWeight: '900' },
   navCaption: {
     color: colors.faint,
     fontFamily,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.4,
     marginBottom: 9,
@@ -730,8 +746,8 @@ const styles = StyleSheet.create({
   navItemCompact: { justifyContent: 'center', paddingHorizontal: 0 },
   navItemActive: { backgroundColor: colors.primarySoft },
   navItemPressed: { backgroundColor: colors.surfaceMuted },
-  navIcon: { width: 22, color: colors.muted, fontFamily, fontSize: 17, textAlign: 'center' },
-  navLabel: { color: colors.textSoft, fontFamily, fontSize: 13, fontWeight: '700' },
+  navIcon: { width: 22, color: colors.muted, fontFamily, fontSize: 18, textAlign: 'center' },
+  navLabel: { color: colors.textSoft, fontFamily, fontSize: 15, fontWeight: '700' },
   navTextActive: { color: colors.primary, fontWeight: '900' },
   sidebarBottom: { marginTop: 'auto', alignSelf: 'stretch', gap: 14 },
   safetyCard: {
@@ -744,8 +760,8 @@ const styles = StyleSheet.create({
   },
   safetyDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.success },
   safetyCopy: { flex: 1 },
-  safetyTitle: { color: colors.text, fontFamily, fontSize: 10, fontWeight: '900' },
-  safetyText: { color: colors.muted, fontFamily, fontSize: 8, marginTop: 3 },
+  safetyTitle: { color: colors.text, fontFamily, fontSize: 12, fontWeight: '900' },
+  safetyText: { color: colors.muted, fontFamily, fontSize: 10, marginTop: 3 },
   accountButton: {
     minHeight: 57,
     paddingTop: 14,
@@ -766,8 +782,8 @@ const styles = StyleSheet.create({
   },
   avatarText: { color: '#fff', fontFamily, fontWeight: '900' },
   accountCopy: { flex: 1, minWidth: 0 },
-  accountName: { color: colors.text, fontFamily, fontSize: 12, fontWeight: '900' },
-  accountRole: { color: colors.muted, fontFamily, fontSize: 9, marginTop: 3 },
+  accountName: { color: colors.text, fontFamily, fontSize: 14, fontWeight: '900' },
+  accountRole: { color: colors.muted, fontFamily, fontSize: 11, marginTop: 3 },
   accountArrow: { color: colors.faint, fontFamily, fontSize: 22 },
   workspace: { flex: 1, minWidth: 0 },
   workspaceBody: { flex: 1, minHeight: 0 },
@@ -783,14 +799,14 @@ const styles = StyleSheet.create({
   topbarEyebrow: {
     color: colors.primary,
     fontFamily,
-    fontSize: 8,
+    fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1.3,
   },
-  topbarTitle: { color: colors.textSoft, fontFamily, fontSize: 11, fontWeight: '700', marginTop: 3 },
+  topbarTitle: { color: colors.textSoft, fontFamily, fontSize: 13, fontWeight: '700', marginTop: 3 },
   topbarActions: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 10 },
   topbarUtility: { padding: 10 },
-  topbarUtilityText: { color: colors.muted, fontFamily, fontSize: 10, fontWeight: '700' },
+  topbarUtilityText: { color: colors.muted, fontFamily, fontSize: 12, fontWeight: '700' },
   profileButton: {
     minHeight: 40,
     borderWidth: 1,
@@ -810,16 +826,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarSmallText: { color: '#fff', fontFamily, fontSize: 10, fontWeight: '900' },
-  profileText: { color: colors.text, fontFamily, fontSize: 11, fontWeight: '800', paddingRight: 5 },
+  avatarSmallText: { color: '#fff', fontFamily, fontSize: 12, fontWeight: '900' },
+  profileText: { maxWidth: 160, flexShrink: 1, color: colors.text, fontFamily, fontSize: 13, fontWeight: '800', paddingRight: 5 },
   mobileWordmark: { width: 88, height: 34 },
   mobileQuickAction: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  mobileQuickActionText: { color: '#fff', fontFamily, fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  mobileQuickActionText: { color: '#fff', fontFamily, fontSize: 21, fontWeight: '700', lineHeight: 23 },
   mobileNav: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flexShrink: 0,
     height: 68,
     borderTopWidth: 1,
     borderTopColor: colors.border,
@@ -827,8 +840,8 @@ const styles = StyleSheet.create({
   },
   mobileNavContent: { minWidth: '100%', paddingHorizontal: 6 },
   mobileNavItem: { minWidth: 72, flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
-  mobileNavIcon: { color: colors.muted, fontFamily, fontSize: 17 },
-  mobileNavLabel: { color: colors.muted, fontFamily, fontSize: 9, fontWeight: '700' },
+  mobileNavIcon: { color: colors.muted, fontFamily, fontSize: 18 },
+  mobileNavLabel: { color: colors.muted, fontFamily, fontSize: 11, fontWeight: '700' },
   publicScreen: {
     flexGrow: 1,
     width: '100%',
@@ -862,11 +875,11 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'stretch',
   },
-  pageHeaderCopy: { flex: 1, maxWidth: 760 },
+  pageHeaderCopy: { flex: 1, minWidth: 0, maxWidth: 760 },
   eyebrow: {
     color: colors.primary,
     fontFamily,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.4,
   },
@@ -882,11 +895,11 @@ const styles = StyleSheet.create({
   pageDescription: {
     color: colors.muted,
     fontFamily,
-    fontSize: 13,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 22,
     marginTop: 7,
   },
-  pageActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pageActions: { flexWrap: 'wrap', flexDirection: 'row', alignItems: 'center', gap: 8 },
   pageActionsMobile: { alignSelf: 'flex-start', flexWrap: 'wrap' },
   section: {
     gap: 18,
@@ -903,12 +916,12 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   sectionHeading: { flex: 1 },
-  sectionTitle: { color: colors.text, fontFamily, fontSize: 17, fontWeight: '900', letterSpacing: -0.4 },
-  sectionDescription: { color: colors.muted, fontFamily, fontSize: 11, lineHeight: 18, marginTop: 5 },
+  sectionTitle: { color: colors.text, fontFamily, fontSize: 18, fontWeight: '900', letterSpacing: -0.4 },
+  sectionDescription: { color: colors.muted, fontFamily, fontSize: 13, lineHeight: 20, marginTop: 5 },
   field: { gap: 7 },
   fieldLabelRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
-  fieldLabel: { color: colors.text, fontFamily, fontSize: 11, fontWeight: '900' },
-  fieldHint: { color: colors.faint, fontFamily, fontSize: 9 },
+  fieldLabel: { color: colors.text, fontFamily, fontSize: 13, fontWeight: '900' },
+  fieldHint: { color: colors.faint, fontFamily, fontSize: 11 },
   input: {
     minHeight: 50,
     borderWidth: 1,
@@ -917,7 +930,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     color: colors.text,
     fontFamily,
-    fontSize: 13,
+    fontSize: 15,
     paddingHorizontal: 14,
     paddingVertical: 10,
     outlineStyle: 'none',
@@ -932,7 +945,7 @@ const styles = StyleSheet.create({
   },
   inputError: { borderColor: colors.danger },
   inputDisabled: { backgroundColor: colors.surfaceSoft, color: colors.muted },
-  fieldError: { color: colors.danger, fontFamily, fontSize: 10, fontWeight: '700' },
+  fieldError: { color: colors.danger, fontFamily, fontSize: 12, fontWeight: '700' },
   button: {
     minHeight: 48,
     borderRadius: radius.md,
@@ -941,14 +954,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonCompact: { minHeight: 38, borderRadius: radius.sm, paddingHorizontal: 13 },
+  buttonCompact: { minHeight: 44, borderRadius: radius.sm, paddingHorizontal: 13 },
   buttonSecondary: { borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface },
   buttonGhost: { backgroundColor: colors.primarySoft },
   buttonDanger: { backgroundColor: colors.danger },
   buttonPressed: { opacity: 0.88, transform: [{ scale: 0.995 }] },
   buttonFocused: { borderWidth: 2, borderColor: colors.ink },
   buttonDisabled: { opacity: 0.42 },
-  buttonText: { color: '#fff', fontFamily, fontSize: 12, fontWeight: '900' },
+  buttonText: { color: '#fff', fontFamily, fontSize: 14, fontWeight: '900' },
   buttonTextDark: { color: colors.text },
   iconButton: {
     width: 40,
@@ -961,7 +974,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconButtonPressed: { backgroundColor: colors.surfaceSoft },
-  iconButtonText: { color: colors.text, fontFamily, fontSize: 16, fontWeight: '800' },
+  iconButtonText: { color: colors.text, fontFamily, fontSize: 17, fontWeight: '800' },
   notice: {
     minHeight: 58,
     borderWidth: 1,
@@ -979,8 +992,8 @@ const styles = StyleSheet.create({
   noticeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primary, marginTop: 5 },
   noticeDotError: { backgroundColor: colors.danger },
   noticeCopy: { flex: 1 },
-  noticeTitle: { color: colors.text, fontFamily, fontSize: 11, fontWeight: '900', marginBottom: 3 },
-  noticeText: { color: colors.textSoft, fontFamily, fontSize: 11, lineHeight: 18 },
+  noticeTitle: { color: colors.text, fontFamily, fontSize: 13, fontWeight: '900', marginBottom: 3 },
+  noticeText: { color: colors.textSoft, fontFamily, fontSize: 13, lineHeight: 20 },
   emptyState: {
     minHeight: 220,
     borderWidth: 1,
@@ -1000,12 +1013,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyIconText: { color: colors.primary, fontFamily, fontSize: 20, fontWeight: '900' },
-  emptyTitle: { color: colors.text, fontFamily, fontSize: 15, fontWeight: '900', marginTop: 14, textAlign: 'center' },
-  emptyText: { color: colors.muted, fontFamily, fontSize: 11, lineHeight: 18, marginTop: 7, textAlign: 'center', maxWidth: 420 },
+  emptyIconText: { color: colors.primary, fontFamily, fontSize: 21, fontWeight: '900' },
+  emptyTitle: { color: colors.text, fontFamily, fontSize: 16, fontWeight: '900', marginTop: 14, textAlign: 'center' },
+  emptyText: { color: colors.muted, fontFamily, fontSize: 13, lineHeight: 20, marginTop: 7, textAlign: 'center', maxWidth: 420 },
   emptyAction: { marginTop: 16 },
   loadingState: { minHeight: 170, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  loadingText: { color: colors.muted, fontFamily, fontSize: 11 },
+  loadingText: { color: colors.muted, fontFamily, fontSize: 13 },
   badge: {
     alignSelf: 'center',
     minHeight: 32,
@@ -1022,7 +1035,7 @@ const styles = StyleSheet.create({
   badgeDanger: { backgroundColor: colors.dangerSoft },
   badgeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primary },
   badgeDotDanger: { backgroundColor: colors.danger },
-  badgeText: { color: colors.textSoft, fontFamily, fontSize: 10, fontWeight: '900' },
+  badgeText: { color: colors.textSoft, fontFamily, fontSize: 12, fontWeight: '900' },
   tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tab: {
     minHeight: 38,
@@ -1036,19 +1049,20 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   tabActive: { borderColor: colors.text, backgroundColor: colors.surface },
-  tabText: { color: colors.muted, fontFamily, fontSize: 10, fontWeight: '800' },
+  tabText: { color: colors.muted, fontFamily, fontSize: 12, fontWeight: '800' },
   tabTextActive: { color: colors.text, fontWeight: '900' },
-  tabCount: { color: colors.faint, fontFamily, fontSize: 9, fontWeight: '800' },
+  tabCount: { color: colors.faint, fontFamily, fontSize: 11, fontWeight: '800' },
   tabCountActive: { color: colors.primary },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(16,35,31,0.42)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   dialog: {
+    flexGrow: 0,
+    flexShrink: 1,
     width: '100%',
     maxWidth: 440,
     borderRadius: radius.xl,
     backgroundColor: colors.surface,
-    padding: 28,
-    alignItems: 'center',
   },
+  dialogContent: { padding: 24, alignItems: 'center' },
   dialogIcon: {
     width: 48,
     height: 48,
@@ -1057,9 +1071,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dialogIconText: { color: colors.warning, fontFamily, fontSize: 20, fontWeight: '900' },
-  dialogTitle: { color: colors.text, fontFamily, fontSize: 20, fontWeight: '900', marginTop: 18, textAlign: 'center' },
-  dialogDescription: { color: colors.muted, fontFamily, fontSize: 12, lineHeight: 20, marginTop: 8, textAlign: 'center' },
+  dialogIconText: { color: colors.warning, fontFamily, fontSize: 21, fontWeight: '900' },
+  dialogTitle: { color: colors.text, fontFamily, fontSize: 21, fontWeight: '900', marginTop: 18, textAlign: 'center' },
+  dialogDescription: { color: colors.muted, fontFamily, fontSize: 14, lineHeight: 22, marginTop: 8, textAlign: 'center' },
   dialogActions: { width: '100%', flexDirection: 'row', gap: 10, marginTop: 24 },
   dialogAction: { flex: 1 },
 });

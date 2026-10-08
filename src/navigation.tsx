@@ -208,6 +208,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 4,
   },
-  loadingMarkText: { color: '#fff', fontFamily, fontSize: 18, fontWeight: '900' },
-  loadingText: { color: colors.muted, fontFamily, fontSize: 11 },
+  loadingMarkText: { color: '#fff', fontFamily, fontSize: 19, fontWeight: '900' },
+  loadingText: { color: colors.muted, fontFamily, fontSize: 13 },
 });
