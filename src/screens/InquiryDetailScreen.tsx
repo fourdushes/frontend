@@ -112,14 +112,14 @@ export function InquiryDetailScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
-  meta: { color: colors.muted, fontFamily, fontSize: 10 },
+  meta: { color: colors.muted, fontFamily, fontSize: 12 },
   messageBlock: {
     borderRadius: radius.md,
     backgroundColor: colors.surfaceSoft,
     padding: 20,
   },
-  blockLabel: { color: colors.primary, fontFamily, fontSize: 10, fontWeight: '900' },
-  messageText: { color: colors.text, fontFamily, fontSize: 14, lineHeight: 24, marginTop: 12 },
+  blockLabel: { color: colors.primary, fontFamily, fontSize: 12, fontWeight: '900' },
+  messageText: { color: colors.text, fontFamily, fontSize: 15, lineHeight: 25, marginTop: 12 },
   answerBlock: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -138,8 +138,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  answerMarkText: { color: '#fff', fontFamily, fontSize: 14, fontWeight: '900' },
-  answerLabel: { color: colors.primary, fontFamily, fontSize: 10, fontWeight: '900' },
-  answerText: { color: colors.text, fontFamily, fontSize: 14, lineHeight: 24, marginTop: 8 },
+  answerMarkText: { color: '#fff', fontFamily, fontSize: 15, fontWeight: '900' },
+  answerLabel: { color: colors.primary, fontFamily, fontSize: 12, fontWeight: '900' },
+  answerText: { color: colors.text, fontFamily, fontSize: 15, lineHeight: 25, marginTop: 8 },
   footerActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: spacing.sm },
 });
