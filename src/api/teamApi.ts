@@ -17,6 +17,7 @@ import {
   MedicalRequest,
   MyPage,
   PasswordChangePreparation,
+  TextTalkProfile,
   UserType,
   WardSearchResponse,
 } from '../types/api';
@@ -219,6 +220,11 @@ export const teamApi = {
             : '/api/mypage/institutions-user',
       ),
     ),
+
+  getTextTalkProfile: (accessToken?: string) =>
+    unwrap<TextTalkProfile>(apiClient.get('/api/show-text-talk', {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+    })),
 
   changeName: (newName: string) =>
     unwrap<{ newName: string }>(apiClient.patch('/api/mypage/change-name', { newName })),
