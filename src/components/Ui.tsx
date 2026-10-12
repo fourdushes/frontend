@@ -34,6 +34,7 @@ type NavItem = {
 
 const roleNavigation: Record<UserType, NavItem[]> = {
   WARD: [
+    { route: 'HospitalReception', icon: 'ID', label: '병원 접수 필담' },
     { route: 'ArchiveList', icon: '▤', label: '진료 기록' },
     { route: 'Care', icon: '♡', label: '케어 연결' },
     { route: 'Inquiry', icon: '?', label: '문의하기' },

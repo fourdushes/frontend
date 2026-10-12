@@ -194,6 +194,12 @@ export type MyPage = {
   institytionsName?: string;
 };
 
+export type TextTalkProfile = {
+  wardUserId: string;
+  wardUserName: string;
+  wardUserBirthDate: string;
+};
+
 export type InquiryStatus = 'PENDING' | 'ANSWERED';
 
 export type Inquiry = {

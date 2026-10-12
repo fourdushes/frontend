@@ -11,6 +11,7 @@ import { ArchiveListScreen } from './screens/ArchiveListScreen';
 import { CareScreen } from './screens/CareScreen';
 import { ChatScreen } from './screens/ChatScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { HospitalReceptionScreen } from './screens/HospitalReceptionScreen';
 import { InquiryDetailScreen } from './screens/InquiryDetailScreen';
 import { InquiryScreen } from './screens/InquiryScreen';
 import { InstitutionSearchScreen } from './screens/InstitutionSearchScreen';
@@ -36,6 +37,7 @@ export type RootStackParamList = {
   AccountRecovery: undefined;
   InstitutionAccountRecovery: undefined;
   Home: undefined;
+  HospitalReception: undefined;
   InstitutionAdmin: undefined;
   InstitutionSearch: undefined;
   RequestList: undefined;
@@ -50,13 +52,14 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-function protectedScreen(Component: ComponentType<any>) {
+function protectedScreen(Component: ComponentType<any>, allowedUserTypes?: Array<'WARD' | 'GUARDIAN' | 'INSTITUTIONS'>) {
   return function ProtectedScreen(props: any) {
     const { session } = useSession();
     const { activeRequest, inProgressRequest, waitingRequest, ready: treatmentRequestReady } = useTreatmentRequest();
     const isWard = session?.userType === 'WARD';
     const isInstitution = session?.userType === 'INSTITUTIONS';
     const isMedicalUser = isWard || isInstitution;
+    const isRoleBlocked = Boolean(session && allowedUserTypes && !allowedUserTypes.includes(session.userType));
     const activeChatRoomId = inProgressRequest?.chatRoomId;
     const routeChatRoomId = props.route.name === 'Chat' ? Number(props.route.params?.chatRoomId) : null;
     const isLegacyWardRequestRoute = isWard && props.route.name === 'RequestList';
@@ -74,6 +77,8 @@ function protectedScreen(Component: ComponentType<any>) {
           redirectTo: props.route.name,
           redirectParams: props.route.params,
         });
+      } else if (isRoleBlocked) {
+        props.navigation.replace('Home');
       } else if (treatmentRequestReady && isTreatmentRouteLocked && activeChatRoomId) {
         props.navigation.replace('Chat', {
           chatRoomId: activeChatRoomId,
@@ -82,9 +87,10 @@ function protectedScreen(Component: ComponentType<any>) {
       } else if (treatmentRequestReady && (isLegacyWardRequestRoute || isWaitingRouteLocked || isAcceptedRouteLocked)) {
         props.navigation.replace('InstitutionSearch');
       }
-    }, [activeChatRoomId, inProgressRequest?.medicalRequestId, isAcceptedRouteLocked, isLegacyWardRequestRoute, isTreatmentRouteLocked, isWaitingRouteLocked, props.navigation, props.route.name, props.route.params, session, treatmentRequestReady]);
+    }, [activeChatRoomId, inProgressRequest?.medicalRequestId, isAcceptedRouteLocked, isLegacyWardRequestRoute, isRoleBlocked, isTreatmentRouteLocked, isWaitingRouteLocked, props.navigation, props.route.name, props.route.params, session, treatmentRequestReady]);
 
     if (!session) return <RouteLoading label="로그인 화면으로 이동하고 있습니다." />;
+    if (isRoleBlocked) return <RouteLoading label="사용 가능한 화면으로 이동하고 있습니다." />;
     if (isMedicalUser && !treatmentRequestReady) return <RouteLoading label="진료 요청 상태를 확인하고 있습니다." />;
     if (isTreatmentRouteLocked) return <RouteLoading label="진료 중인 대화방으로 이동하고 있습니다." />;
     if (isLegacyWardRequestRoute || isWaitingRouteLocked || isAcceptedRouteLocked) return <RouteLoading label="진료 요청 화면으로 이동하고 있습니다." />;
@@ -111,6 +117,7 @@ const GuestRecovery = guestScreen(AccountRecoveryScreen);
 const GuestInstitutionRecovery = guestScreen(InstitutionAccountRecoveryScreen);
 const GuestMainPreview = guestScreen(MainPreviewScreen);
 const ProtectedHome = protectedScreen(HomeScreen);
+const ProtectedHospitalReception = protectedScreen(HospitalReceptionScreen, ['WARD']);
 const ProtectedInstitutionSearch = protectedScreen(InstitutionSearchScreen);
 const ProtectedRequestList = protectedScreen(RequestListScreen);
 const ProtectedCare = protectedScreen(CareScreen);
@@ -131,6 +138,7 @@ const linking: LinkingOptions<RootStackParamList> = {
       AccountRecovery: 'account-recovery',
       InstitutionAccountRecovery: 'institution-account-recovery',
       Home: 'home',
+      HospitalReception: 'hospital-reception',
       InstitutionAdmin: 'institution-admin',
       InstitutionSearch: 'institutions',
       RequestList: 'requests',
@@ -166,6 +174,7 @@ export function RootNavigation() {
         <Stack.Screen name="AccountRecovery" component={GuestRecovery} />
         <Stack.Screen name="InstitutionAccountRecovery" component={GuestInstitutionRecovery} />
         <Stack.Screen name="Home" component={ProtectedHome} />
+        <Stack.Screen name="HospitalReception" component={ProtectedHospitalReception} />
         <Stack.Screen name="InstitutionAdmin" component={InstitutionAdminScreen} />
         <Stack.Screen name="InstitutionSearch" component={ProtectedInstitutionSearch} />
         <Stack.Screen name="RequestList" component={ProtectedRequestList} />
